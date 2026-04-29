@@ -1,9 +1,17 @@
 # NOAM CARVER · 3D Jewelry Viewer
 
 A minimal, branded customer-facing 3D viewer for jewelry previews. Built with
-[Vite](https://vitejs.dev/), [Three.js](https://threejs.org/), and TypeScript.
-Designed to be hosted as a static site on GitHub Pages for the prototype
-phase, then evolved into a backed-by-database production system.
+[Vite](https://vitejs.dev/) + [Three.js](https://threejs.org/) in plain
+JavaScript — no TypeScript, no frameworks, no Tailwind. Designed to be hosted
+as a static site on GitHub Pages for the prototype phase, then evolved into
+a backed-by-database production system later.
+
+## Two pages
+
+| Path                     | What it is                                                          |
+| ------------------------ | ------------------------------------------------------------------- |
+| `/`                      | Landing page. Paste a preview code, or click **Test your luck**.    |
+| `/viewer/?id=NC12345`    | The actual 3D viewer. Reads `id` from the URL and loads that model. |
 
 A customer receives a private link such as:
 
@@ -11,8 +19,8 @@ A customer receives a private link such as:
 https://yourdomain.com/viewer/?id=NC12345
 ```
 
-The app reads `id` from the URL, loads `/models/NC12345.glb`, and presents
-the model in a clean cinematic viewer with preset camera angles.
+If you share the bare site URL instead, they land on the entry page and can
+type in their code (or hit "Test your luck" to see a random sample).
 
 ---
 
@@ -21,34 +29,41 @@ the model in a clean cinematic viewer with preset camera angles.
 Requirements: Node.js 18+ and npm.
 
 ```bash
-# install dependencies
-npm install
-
-# start the dev server
-npm run dev
-
-# production build
-npm run build
-
-# preview the production build locally
-npm run preview
+npm install      # install dependencies
+npm run dev      # start the dev server
+npm run build    # production build into ./dist
+npm run preview  # serve the production build locally
 ```
 
-Open `http://localhost:5173/?id=sample-ring` to test (after adding a
-`public/models/sample-ring.glb` file).
+Open `http://localhost:5173/` for the landing page, or
+`http://localhost:5173/viewer/?id=sample-ring` for the viewer (after adding
+`public/models/sample-ring.glb`).
 
 ---
 
 ## Adding a new customer preview
 
-1. Drop a `.glb` file into `public/models/`. The filename (without extension)
-   becomes the preview ID.
+1. Drop a `.glb` file into `public/models/`. The filename (without
+   extension) becomes the preview ID.
 
    ```
    public/models/NC12345.glb
    ```
 
-2. (Optional) Add still images for the preset views in `public/thumbnails/`:
+2. Add the ID to `public/models.json` so it appears in the **Test your luck**
+   pool on the landing page:
+
+   ```json
+   [
+     "sample-ring",
+     "NC12345"
+   ]
+   ```
+
+   The viewer works for any valid ID, even one not listed here — the manifest
+   only controls the random picker.
+
+3. (Optional) Add still images for the preset views in `public/thumbnails/`:
 
    ```
    public/thumbnails/NC12345-front.jpg
@@ -60,7 +75,7 @@ Open `http://localhost:5173/?id=sample-ring` to test (after adding a
    If a thumbnail is missing, the strip falls back to a labeled placeholder.
    Square JPGs around 512x512 px work well.
 
-3. Share the preview URL:
+4. Share the preview URL:
 
    ```
    https://yourdomain.com/viewer/?id=NC12345
@@ -85,12 +100,15 @@ The workflow auto-detects the correct Vite `base` path:
 
 ### Getting `/viewer/?id=...` URLs
 
-GitHub Pages will serve the app at `https://<user>.github.io/<repo>/`. To
-get the literal `/viewer/` path shown in customer links, name the repo
-`viewer`. With a custom domain (`yourdomain.com`), you can either:
+GitHub Pages serves the site at `https://<user>.github.io/<repo>/`. The
+viewer page lives at `/viewer/`, so the full link is
+`https://<user>.github.io/<repo>/viewer/?id=NC12345`. With a custom domain
+(`yourdomain.com`) and a CNAME, the URL becomes
+`https://yourdomain.com/viewer/?id=NC12345`.
 
-- Repo named `viewer` + CNAME -> `https://yourdomain.com/viewer/?id=...`
-- Or change the base path manually with `VITE_BASE=/viewer/ npm run build`.
+If you want the simpler `https://yourdomain.com/viewer/?id=...` (no repo
+segment in the path), name the repo after a domain you control or build with
+a manual base, for example `VITE_BASE=/ npm run build`.
 
 ---
 
@@ -98,65 +116,46 @@ get the literal `/viewer/` path shown in customer links, name the repo
 
 ```
 .
-├── index.html
+├── index.html                   # Landing page
+├── viewer/
+│   └── index.html               # Viewer page
 ├── package.json
-├── tsconfig.json
-├── vite.config.ts
+├── vite.config.js
 ├── public/
 │   ├── branding/noam-carver-logo.svg
-│   ├── models/                 # GLB files + README
-│   └── thumbnails/             # optional still-image previews
+│   ├── models/                  # GLB files + README
+│   ├── models.json              # IDs available to "Test your luck"
+│   └── thumbnails/              # Optional still-image previews
 ├── src/
-│   ├── main.ts
-│   ├── components/
-│   │   ├── Header.ts
-│   │   ├── ViewerLayout.ts
-│   │   ├── LoadingOverlay.ts
-│   │   ├── ErrorState.ts
-│   │   ├── ThumbnailStrip.ts
-│   │   └── ViewerControls.ts
-│   ├── three/
-│   │   ├── createScene.ts
-│   │   ├── loadModel.ts
-│   │   ├── fitCameraToObject.ts
-│   │   ├── cameraViews.ts
-│   │   └── disposeScene.ts
+│   ├── landing.js               # Landing page logic
+│   ├── main.js                  # Viewer page logic
+│   ├── components/              # Header / Layout / Loading / Error / Thumbs / Controls
+│   ├── three/                   # Scene / Loader / Camera fitting / Camera presets / Cleanup
 │   ├── services/
-│   │   └── modelService.ts
-│   └── styles/
-│       ├── base.css
-│       └── viewer.css
+│   │   └── modelService.js      # URL sanitization, asset URL resolution, manifest fetch
+│   └── styles/                  # base.css, viewer.css, landing.css
 └── .github/workflows/deploy.yml
 ```
 
----
+Each source file starts with a header comment that explains what it does
+and why. If you've never touched Three.js before, a good reading order is:
 
-## How it works
-
-- `src/services/modelService.ts` reads the `id` query parameter, sanitizes it,
-  and resolves a model URL plus four thumbnail URLs (one per preset view).
-- `src/three/createScene.ts` sets up the WebGL renderer, camera, OrbitControls,
-  and studio-style lighting (ambient + hemisphere + key/fill/rim directionals).
-- `src/three/loadModel.ts` loads the GLB with `GLTFLoader`, preserving original
-  materials and material names.
-- `src/three/fitCameraToObject.ts` recenters the model and frames the camera.
-- `src/three/cameraViews.ts` defines the Front / Side / Top / Perspective
-  presets and a smooth tween between them.
-- `src/main.ts` wires everything together: layout, header, loading overlay,
-  thumbnail strip, floating controls (auto-rotate, reset, fullscreen), resize
-  handling, error states, and cleanup.
-
-There is no download button. There is no admin page. The prototype is
-intentionally read-only.
+1. `src/landing.js` — straight DOM, simplest entry point.
+2. `src/main.js` — wires the viewer page together.
+3. `src/three/createScene.js` — the core Three.js setup.
+4. `src/three/loadModel.js`, `fitCameraToObject.js`, `cameraViews.js`,
+   `disposeScene.js` — the rest of the 3D layer.
+5. `src/components/*.js` — small, framework-free DOM helpers.
+6. `src/services/modelService.js` — URL parsing and asset paths.
 
 ---
 
 ## Privacy & security note
 
 > **Important:** This is a static GitHub Pages prototype. Even though preview
-> links are unguessable, the GLB files themselves are technically reachable by
-> anyone who inspects the browser's network tab or knows a filename. There is
-> **no real protection** here.
+> links are unguessable, the GLB files themselves are technically reachable
+> by anyone who inspects the browser's network tab or knows a filename.
+> There is **no real protection** here.
 >
 > Do not put confidential designs in this repo. Do not embed customer names,
 > job numbers, or order numbers in filenames. Use opaque random IDs instead.
@@ -202,6 +201,7 @@ Performance & quality:
 
 Operations:
 - [ ] Analytics for link views
+- [ ] Auto-generate `models.json` at build time so adding a GLB is one step
 
 ---
 

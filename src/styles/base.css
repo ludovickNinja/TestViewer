@@ -47,15 +47,14 @@ body {
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  height: 100%;
-  overflow: hidden;
+  min-height: 100%;
   overscroll-behavior: none;
 }
 
 #app {
-  height: 100vh;
-  height: 100dvh;
   width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 button {

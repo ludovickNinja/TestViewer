@@ -3,18 +3,16 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "NOAM CARVER 3D jewelry viewer prototype (Vite + Three.js).",
+  "description": "NOAM CARVER 3D jewelry viewer prototype (Vite + Three.js, vanilla JS).",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "three": "^0.162.0"
   },
   "devDependencies": {
-    "@types/three": "^0.162.0",
-    "typescript": "^5.4.5",
     "vite": "^5.2.10"
   }
 }

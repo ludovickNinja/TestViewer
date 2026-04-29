@@ -1,15 +1,14 @@
-export interface ViewerControlsCallbacks {
-  onToggleAutoRotate: (enabled: boolean) => void;
-  onResetView: () => void;
-  onToggleFullscreen: () => void;
-}
-
-export interface ViewerControlsHandle {
-  element: HTMLElement;
-  setAutoRotate: (enabled: boolean) => void;
-  setFullscreenAvailable: (available: boolean) => void;
-  setFullscreenActive: (active: boolean) => void;
-}
+// ----------------------------------------------------------------------------
+// ViewerControls.js
+// ----------------------------------------------------------------------------
+// The small floating toolbar in the top-right (or bottom-center on mobile):
+//
+//   - Auto-rotate toggle
+//   - Reset view (returns to the default Perspective preset)
+//   - Fullscreen toggle (only shown if the browser supports it)
+//
+// The icons are inline SVGs so we don't need an icon font or extra files.
+// ----------------------------------------------------------------------------
 
 const ICONS = {
   rotate:
@@ -22,12 +21,26 @@ const ICONS = {
     '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 16h3v3h2v-5H5zm3-8H5v2h5V5H8zm6 11h2v-3h3v-2h-5zm2-11V5h-2v5h5V8z"/></svg>'
 };
 
-export function createViewerControls(callbacks: ViewerControlsCallbacks): ViewerControlsHandle {
+/**
+ * @param {{
+ *   onToggleAutoRotate: (enabled: boolean) => void,
+ *   onResetView: () => void,
+ *   onToggleFullscreen: () => void,
+ * }} callbacks
+ * @returns {{
+ *   element: HTMLElement,
+ *   setAutoRotate: (enabled: boolean) => void,
+ *   setFullscreenAvailable: (available: boolean) => void,
+ *   setFullscreenActive: (active: boolean) => void,
+ * }}
+ */
+export function createViewerControls(callbacks) {
   const el = document.createElement('div');
   el.className = 'nc-controls';
   el.setAttribute('role', 'toolbar');
   el.setAttribute('aria-label', 'Viewer controls');
 
+  // ---- Auto-rotate ----
   const rotateBtn = document.createElement('button');
   rotateBtn.type = 'button';
   rotateBtn.className = 'nc-controls__btn';
@@ -36,6 +49,7 @@ export function createViewerControls(callbacks: ViewerControlsCallbacks): Viewer
   rotateBtn.title = 'Auto-rotate';
   rotateBtn.innerHTML = ICONS.rotate;
 
+  // ---- Reset view ----
   const resetBtn = document.createElement('button');
   resetBtn.type = 'button';
   resetBtn.className = 'nc-controls__btn';
@@ -43,6 +57,7 @@ export function createViewerControls(callbacks: ViewerControlsCallbacks): Viewer
   resetBtn.title = 'Reset view';
   resetBtn.innerHTML = ICONS.reset;
 
+  // ---- Fullscreen ----
   const fsBtn = document.createElement('button');
   fsBtn.type = 'button';
   fsBtn.className = 'nc-controls__btn';
@@ -61,21 +76,21 @@ export function createViewerControls(callbacks: ViewerControlsCallbacks): Viewer
     setAutoRotate(autoRotate);
     callbacks.onToggleAutoRotate(autoRotate);
   });
-
   resetBtn.addEventListener('click', () => callbacks.onResetView());
   fsBtn.addEventListener('click', () => callbacks.onToggleFullscreen());
 
-  function setAutoRotate(enabled: boolean) {
+  function setAutoRotate(enabled) {
     autoRotate = enabled;
     rotateBtn.classList.toggle('is-active', enabled);
     rotateBtn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
   }
 
-  function setFullscreenAvailable(available: boolean) {
+  function setFullscreenAvailable(available) {
     fsBtn.style.display = available ? '' : 'none';
   }
 
-  function setFullscreenActive(active: boolean) {
+  function setFullscreenActive(active) {
+    // Swap the icon between "expand" and "collapse" depending on state.
     fsBtn.innerHTML = active ? ICONS.collapse : ICONS.expand;
     fsBtn.classList.toggle('is-active', active);
   }
