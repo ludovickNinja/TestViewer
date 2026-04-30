@@ -24,6 +24,30 @@
         <p>This preview viewer needs JavaScript. Please enable it and reload.</p>
       </div>
     </noscript>
-    <script type="module" src="./src/landing.js"></script>
+    <script type="module" src="./src/landing.js" id="app-bundle"></script>
+    <script>
+      // When GitHub Pages serves the raw source instead of the Vite build output,
+      // the browser rejects CSS module imports (wrong MIME type) and fires an
+      // error event on the script element. We catch it here and show a clear
+      // message instead of the eternal "Loading…" placeholder.
+      // In the Vite build the original script element is replaced entirely, so
+      // document.getElementById("app-bundle") returns null and this is a no-op.
+      (function () {
+        var s = document.getElementById('app-bundle');
+        if (!s) return;
+        s.addEventListener('error', function () {
+          var app = document.getElementById('app');
+          if (app && !app.firstChild) {
+            app.innerHTML =
+              '<div class="nc-fallback">' +
+              '<h1>NOAM CARVER</h1>' +
+              '<p>This preview could not load. Please try refreshing the page.<br>' +
+              'If you are the site owner, go to <strong>Settings → Pages → Source</strong> ' +
+              'and select <strong>Deploy from a branch → gh-pages</strong>.</p>' +
+              '</div>';
+          }
+        });
+      }());
+    </script>
   </body>
 </html>
