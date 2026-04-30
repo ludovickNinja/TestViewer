@@ -6,6 +6,11 @@ JavaScript — no TypeScript, no frameworks, no Tailwind. Designed to be hosted
 as a static site on GitHub Pages for the prototype phase, then evolved into
 a backed-by-database production system later.
 
+> **Deploying? Read this first.** In the GitHub repo, go to
+> **Settings → Pages** and set **Source** to **GitHub Actions**. If it is
+> set to "Deploy from a branch" instead, Pages will publish raw source files
+> (which require a Vite build step to run) and the site will appear blank.
+
 ## Two pages
 
 | Path                     | What it is                                                          |
