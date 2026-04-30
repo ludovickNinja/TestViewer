@@ -8,10 +8,21 @@
     <title>NOAM CARVER · Preview</title>
     <!-- Logo lives one level up because this page is at /viewer/index.html -->
     <link rel="icon" type="image/svg+xml" href="../branding/noam-carver-logo.svg" />
+    <style>
+      html, body { margin: 0; background: #0b0b0c; color: #e8e6e1; font-family: system-ui, -apple-system, sans-serif; }
+      #app:empty::before { content: "Loading preview…"; display: block; padding: 4rem 1rem; text-align: center; opacity: 0.6; }
+      .nc-fallback { padding: 3rem 1rem; text-align: center; max-width: 32rem; margin: 0 auto; }
+    </style>
   </head>
   <body>
     <!-- The 3D viewer mounts here. See src/main.js. -->
     <div id="app"></div>
+    <noscript>
+      <div class="nc-fallback">
+        <h1>NOAM CARVER</h1>
+        <p>This preview viewer needs JavaScript. Please enable it and reload.</p>
+      </div>
+    </noscript>
     <script type="module" src="../src/main.js"></script>
   </body>
 </html>

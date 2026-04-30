@@ -7,10 +7,23 @@
     <meta name="description" content="NOAM CARVER private 3D jewelry preview." />
     <title>NOAM CARVER · Preview</title>
     <link rel="icon" type="image/svg+xml" href="./branding/noam-carver-logo.svg" />
+    <style>
+      /* Inline so the page is never visually blank, even if the JS bundle
+         fails to load (e.g. Pages serving raw source instead of the build). */
+      html, body { margin: 0; background: #0b0b0c; color: #e8e6e1; font-family: system-ui, -apple-system, sans-serif; }
+      #app:empty::before { content: "Loading…"; display: block; padding: 4rem 1rem; text-align: center; opacity: 0.6; }
+      .nc-fallback { padding: 3rem 1rem; text-align: center; max-width: 32rem; margin: 0 auto; }
+    </style>
   </head>
   <body>
     <!-- The landing page mounts here. See src/landing.js. -->
     <div id="app"></div>
+    <noscript>
+      <div class="nc-fallback">
+        <h1>NOAM CARVER</h1>
+        <p>This preview viewer needs JavaScript. Please enable it and reload.</p>
+      </div>
+    </noscript>
     <script type="module" src="./src/landing.js"></script>
   </body>
 </html>
