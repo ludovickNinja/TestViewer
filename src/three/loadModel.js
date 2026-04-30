@@ -3,6 +3,11 @@
 // ----------------------------------------------------------------------------
 // Loads a single .glb file using Three.js's GLTFLoader.
 //
+// The jewelry GLBs are Draco-compressed (extensionsRequired contains
+// KHR_draco_mesh_compression), so we wire up a DRACOLoader. Without it,
+// GLTFLoader throws "No DRACOLoader instance provided" and the viewer
+// falls through to the "Preview not found." error state.
+//
 // PRIVACY NOTE (prototype):
 // In this static GitHub Pages prototype the .glb URL is fetched directly by
 // the browser, which means it's visible in the Network tab of devtools.
@@ -12,6 +17,21 @@
 // ----------------------------------------------------------------------------
 
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+
+// Google's hosted Draco decoder. Matches the version Three.js r0.162 ships
+// against, and is the URL used in the official Three.js examples.
+const DRACO_DECODER_URL = 'https://www.gstatic.com/draco/versioned/decoders/1.5.6/';
+
+// One shared decoder is enough — it caches the WASM module across loads.
+let sharedDracoLoader = null;
+function getDracoLoader() {
+  if (!sharedDracoLoader) {
+    sharedDracoLoader = new DRACOLoader();
+    sharedDracoLoader.setDecoderPath(DRACO_DECODER_URL);
+  }
+  return sharedDracoLoader;
+}
 
 /**
  * Load a .glb model.
@@ -25,6 +45,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
  */
 export function loadModel({ url, onProgress, signal }) {
   const loader = new GLTFLoader();
+  loader.setDRACOLoader(getDracoLoader());
 
   return new Promise((resolve, reject) => {
     // Bail out immediately if the caller already cancelled.
