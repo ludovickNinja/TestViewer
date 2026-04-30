@@ -23,6 +23,25 @@
         <p>This preview viewer needs JavaScript. Please enable it and reload.</p>
       </div>
     </noscript>
-    <script type="module" src="../src/main.js"></script>
+    <script type="module" src="../src/main.js" id="app-bundle"></script>
+    <script>
+      // Same error detection as in the root index.html — catches the case where
+      // Pages serves raw source and the module fails due to CSS import rejection.
+      (function () {
+        var s = document.getElementById('app-bundle');
+        if (!s) return;
+        s.addEventListener('error', function () {
+          var app = document.getElementById('app');
+          if (app && !app.firstChild) {
+            app.innerHTML =
+              '<div class="nc-fallback">' +
+              '<h1>NOAM CARVER</h1>' +
+              '<p>This preview could not load. Please try refreshing the page, ' +
+              'or contact your jeweler for an updated link.</p>' +
+              '</div>';
+          }
+        });
+      }());
+    </script>
   </body>
 </html>
