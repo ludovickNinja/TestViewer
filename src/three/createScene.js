@@ -41,27 +41,74 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
  * }}
  */
 export function createScene(container) {
-  // The Scene is the root container for everything 3D.
+  // ============================================================================
+  // SCENE CONFIGURATION — Adjust these to customize appearance & behavior
+  // ============================================================================
+
+  const SCENE_CONFIG = {
+    backgroundColor: '#0b0b0c',    // Dark background to focus on the object
+  };
+
+  const CAMERA_CONFIG = {
+    fov: 35,                       // Field of view in degrees (lower = more zoomed in)
+    initialPosition: [0, 0, 3],    // Starting camera position [x, y, z]
+    nearPlane: 0.01,               // Objects closer than this won't render
+    farPlane: 100,                 // Objects farther than this won't render
+  };
+
+  const RENDERER_CONFIG = {
+    toneMappingExposure: 1.8,      // Overall brightness (higher = brighter)
+    pixelRatioCap: 2,              // Max device pixel ratio (1-2 recommended)
+  };
+
+  const LIGHTING_CONFIG = {
+    ambientIntensity: 0.8,         // Uniform light preventing pitch-black shadows
+    hemisphereIntensity: 0.7,      // Sky light (above) + ground light (below)
+    keyLightIntensity: 4.0,        // Primary bright light (up-right)
+    fillLightIntensity: 2.5,       // Secondary soft light (opposite side)
+    rimLightIntensity: 2.5,        // Back warm light for edge glow
+  };
+
+  const LIGHT_POSITIONS = {
+    keyLight: [2.5, 3, 2],         // Bright light from upper right
+    fillLight: [-3, 1.5, 1.5],     // Soft light from upper left
+    rimLight: [0, 2, -3],          // Warm light from behind
+  };
+
+  const CONTROLS_CONFIG = {
+    dampingFactor: 0.08,           // Smoothness of rotation (lower = smoother)
+    rotateSpeed: 0.7,              // How responsive to drag gestures
+    zoomSpeed: 0.8,                // How responsive to scroll/pinch
+    panSpeed: 0.6,                 // How responsive to middle-click drag
+    minDistance: 0.05,             // Closest zoom distance
+    maxDistance: 50,               // Farthest zoom distance
+    autoRotateSpeed: 0.8,          // Speed of auto-rotation if enabled
+  };
+
+  // ============================================================================
+  // SCENE SETUP — Use configurations above
+  // ============================================================================
+
   const scene = new Scene();
-  // Dark, neutral background — keeps the focus on the jewelry.
-  scene.background = new Color('#0b0b0c');
+  scene.background = new Color(SCENE_CONFIG.backgroundColor);
 
-  // PerspectiveCamera(fov, aspect, near, far). The aspect gets fixed in setSize.
-  const camera = new PerspectiveCamera(35, 1, 0.01, 100);
-  camera.position.set(0, 0, 3);
+  const camera = new PerspectiveCamera(
+    CAMERA_CONFIG.fov,
+    1,
+    CAMERA_CONFIG.nearPlane,
+    CAMERA_CONFIG.farPlane
+  );
+  camera.position.set(...CAMERA_CONFIG.initialPosition);
 
-  // The renderer turns the scene + camera into pixels on a <canvas>.
   const renderer = new WebGLRenderer({
-    antialias: true,         // smooth edges
-    alpha: false,            // we have our own background
+    antialias: true,
+    alpha: false,
     powerPreference: 'high-performance'
   });
-  // Cap the pixel ratio at 2 — beyond that you waste GPU for no visible gain.
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  // Color space + tone mapping make GLB materials look how the artist intended.
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, RENDERER_CONFIG.pixelRatioCap));
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = RENDERER_CONFIG.toneMappingExposure;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = PCFSoftShadowMap;
 
@@ -69,44 +116,33 @@ export function createScene(container) {
   canvas.classList.add('viewer-canvas');
   container.appendChild(canvas);
 
-  // ------- Lighting -------
-  // Goal: a "jewelry box" feel. Bright top key light, soft fill, warm rim.
-  // FUTURE: replace these manual lights with an HDRI environment map for
-  // physically accurate metal/gem reflections.
+  // Add lights using configuration
+  scene.add(new AmbientLight(0xffffff, LIGHTING_CONFIG.ambientIntensity));
+  scene.add(new HemisphereLight(0xffffff, 0x1a1a1f, LIGHTING_CONFIG.hemisphereIntensity));
 
-  // Ambient = uniform light from everywhere. Prevents pitch-black shadows.
-  scene.add(new AmbientLight(0xffffff, 0.35));
-
-  // Hemisphere = sky-color from above, ground-color from below. Subtle realism.
-  scene.add(new HemisphereLight(0xffffff, 0x1a1a1f, 0.4));
-
-  // Key light = the brightest, main light. Up and to the right.
-  const keyLight = new DirectionalLight(0xffffff, 2.2);
-  keyLight.position.set(2.5, 3, 2);
+  const keyLight = new DirectionalLight(0xffffff, LIGHTING_CONFIG.keyLightIntensity);
+  keyLight.position.set(...LIGHT_POSITIONS.keyLight);
   scene.add(keyLight);
 
-  // Fill light = softer, opposite side, lifts the shadows.
-  const fillLight = new DirectionalLight(0xffffff, 1.1);
-  fillLight.position.set(-3, 1.5, 1.5);
+  const fillLight = new DirectionalLight(0xffffff, LIGHTING_CONFIG.fillLightIntensity);
+  fillLight.position.set(...LIGHT_POSITIONS.fillLight);
   scene.add(fillLight);
 
-  // Rim/back light = warm light from behind, makes edges glow.
-  const rimLight = new DirectionalLight(0xfff2dc, 1.4);
-  rimLight.position.set(0, 2, -3);
+  const rimLight = new DirectionalLight(0xfff2dc, LIGHTING_CONFIG.rimLightIntensity);
+  rimLight.position.set(...LIGHT_POSITIONS.rimLight);
   scene.add(rimLight);
 
-  // ------- Controls -------
-  // OrbitControls lets the user drag to rotate, scroll/pinch to zoom, etc.
+  // Configure user interaction
   const controls = new OrbitControls(camera, canvas);
-  controls.enableDamping = true;   // smooth, "weighted" feel
-  controls.dampingFactor = 0.08;
-  controls.rotateSpeed = 0.7;
-  controls.zoomSpeed = 0.8;
-  controls.panSpeed = 0.6;
+  controls.enableDamping = true;
+  controls.dampingFactor = CONTROLS_CONFIG.dampingFactor;
+  controls.rotateSpeed = CONTROLS_CONFIG.rotateSpeed;
+  controls.zoomSpeed = CONTROLS_CONFIG.zoomSpeed;
+  controls.panSpeed = CONTROLS_CONFIG.panSpeed;
   controls.enablePan = true;
-  controls.minDistance = 0.05;
-  controls.maxDistance = 50;
-  controls.autoRotateSpeed = 0.8;
+  controls.minDistance = CONTROLS_CONFIG.minDistance;
+  controls.maxDistance = CONTROLS_CONFIG.maxDistance;
+  controls.autoRotateSpeed = CONTROLS_CONFIG.autoRotateSpeed;
 
   /** Resize the canvas + camera to match a new container size. */
   function setSize(width, height) {
