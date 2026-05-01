@@ -47,7 +47,7 @@ export function createScene(container) {
   // ============================================================================
 
   const SCENE_CONFIG = {
-    backgroundColor: '#0b0b0c',    // Dark background to focus on the object
+    backgroundColor: '#f4f4f5',    // Super light grey, almost white
   };
 
   const CAMERA_CONFIG = {
@@ -145,7 +145,6 @@ export function createScene(container) {
     rgbeLoader.load(HDRI_CONFIG.path, (texture) => {
       texture.mapping = 3; // EquirectangularReflectionMapping
       scene.environment = texture;
-      scene.background = texture;
     });
   }
 
