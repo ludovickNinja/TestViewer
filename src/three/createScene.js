@@ -61,7 +61,7 @@ export function createScene(container) {
   // Color space + tone mapping make GLB materials look how the artist intended.
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.8;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = PCFSoftShadowMap;
 
@@ -75,23 +75,23 @@ export function createScene(container) {
   // physically accurate metal/gem reflections.
 
   // Ambient = uniform light from everywhere. Prevents pitch-black shadows.
-  scene.add(new AmbientLight(0xffffff, 0.35));
+  scene.add(new AmbientLight(0xffffff, 0.8));
 
   // Hemisphere = sky-color from above, ground-color from below. Subtle realism.
-  scene.add(new HemisphereLight(0xffffff, 0x1a1a1f, 0.4));
+  scene.add(new HemisphereLight(0xffffff, 0x1a1a1f, 0.7));
 
   // Key light = the brightest, main light. Up and to the right.
-  const keyLight = new DirectionalLight(0xffffff, 2.2);
+  const keyLight = new DirectionalLight(0xffffff, 4.0);
   keyLight.position.set(2.5, 3, 2);
   scene.add(keyLight);
 
   // Fill light = softer, opposite side, lifts the shadows.
-  const fillLight = new DirectionalLight(0xffffff, 1.1);
+  const fillLight = new DirectionalLight(0xffffff, 2.5);
   fillLight.position.set(-3, 1.5, 1.5);
   scene.add(fillLight);
 
   // Rim/back light = warm light from behind, makes edges glow.
-  const rimLight = new DirectionalLight(0xfff2dc, 1.4);
+  const rimLight = new DirectionalLight(0xfff2dc, 2.5);
   rimLight.position.set(0, 2, -3);
   scene.add(rimLight);
 
