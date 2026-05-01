@@ -69,29 +69,30 @@ export function createScene(container) {
   canvas.classList.add('viewer-canvas');
   container.appendChild(canvas);
 
-  // ------- Lighting -------
-  // Goal: a "jewelry box" feel. Bright top key light, soft fill, warm rim.
-  // FUTURE: replace these manual lights with an HDRI environment map for
-  // physically accurate metal/gem reflections.
+  // ===== LIGHTING CONFIGURATION =====
+  // Adjust these values to control overall brightness. Goal: jewelry box feel.
+  // Key: bright top light | Fill: soft opposite side | Rim: warm edge glow
+  // FUTURE: replace with HDRI environment map for physically accurate reflections.
+  const LIGHTING = {
+    ambientIntensity: 0.8,        // Uniform light preventing pitch-black shadows
+    hemisphereIntensity: 0.7,     // Sky light (above) + ground light (below)
+    keyLightIntensity: 4.0,       // Primary bright light (up-right)
+    fillLightIntensity: 2.5,      // Secondary soft light (opposite side)
+    rimLightIntensity: 2.5,       // Back warm light for edge glow
+  };
 
-  // Ambient = uniform light from everywhere. Prevents pitch-black shadows.
-  scene.add(new AmbientLight(0xffffff, 0.8));
+  scene.add(new AmbientLight(0xffffff, LIGHTING.ambientIntensity));
+  scene.add(new HemisphereLight(0xffffff, 0x1a1a1f, LIGHTING.hemisphereIntensity));
 
-  // Hemisphere = sky-color from above, ground-color from below. Subtle realism.
-  scene.add(new HemisphereLight(0xffffff, 0x1a1a1f, 0.7));
-
-  // Key light = the brightest, main light. Up and to the right.
-  const keyLight = new DirectionalLight(0xffffff, 4.0);
+  const keyLight = new DirectionalLight(0xffffff, LIGHTING.keyLightIntensity);
   keyLight.position.set(2.5, 3, 2);
   scene.add(keyLight);
 
-  // Fill light = softer, opposite side, lifts the shadows.
-  const fillLight = new DirectionalLight(0xffffff, 2.5);
+  const fillLight = new DirectionalLight(0xffffff, LIGHTING.fillLightIntensity);
   fillLight.position.set(-3, 1.5, 1.5);
   scene.add(fillLight);
 
-  // Rim/back light = warm light from behind, makes edges glow.
-  const rimLight = new DirectionalLight(0xfff2dc, 2.5);
+  const rimLight = new DirectionalLight(0xfff2dc, LIGHTING.rimLightIntensity);
   rimLight.position.set(0, 2, -3);
   scene.add(rimLight);
 
