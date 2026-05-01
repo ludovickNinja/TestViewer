@@ -6,9 +6,16 @@
 //   - PerspectiveCamera (what the customer sees through)
 //   - OrbitControls (drag to rotate, pinch/scroll to zoom, etc.)
 //   - Studio-style lighting tuned for shiny jewelry
+//   - Dual HDR environments: one for metal parts, one for gem parts
 //
-// We return a small "viewer" object that the rest of the app uses. Nothing
-// in here is jewelry-specific except the lighting choices.
+// Why two HDRs? Metal and gems want opposite environments. Metal looks best
+// under a soft "studio softbox" HDR — broad, even reflections without harsh
+// hotspots. Gems (especially diamonds) need the opposite: a darker HDR with
+// intense pinpoint lights, which become the "fire" / sparkle once refracted
+// through the facets. A single HDR is always a compromise, so we load both
+// and assign per-material after the model loads.
+//
+// We return a small "viewer" object that the rest of the app uses.
 // ----------------------------------------------------------------------------
 
 import {
@@ -16,9 +23,11 @@ import {
   AmbientLight,
   Color,
   DirectionalLight,
+  EquirectangularReflectionMapping,
   HemisphereLight,
   PCFSoftShadowMap,
   PerspectiveCamera,
+  PMREMGenerator,
   Scene,
   SRGBColorSpace,
   WebGLRenderer
@@ -38,7 +47,9 @@ import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
  *   canvas: HTMLCanvasElement,
  *   setSize: (w: number, h: number) => void,
  *   start: () => void,
- *   stop: () => void
+ *   stop: () => void,
+ *   applyMaterialEnvironments: (root: import('three').Object3D) => Promise<void>,
+ *   environments: { metal: import('three').Texture | null, gem: import('three').Texture | null }
  * }}
  */
 export function createScene(container) {
@@ -86,10 +97,19 @@ export function createScene(container) {
     autoRotateSpeed: 0.8,          // Speed of auto-rotation if enabled
   };
 
+  // Two HDRs: a soft "studio" environment for metals, and a contrastier
+  // environment with stronger highlights for gems. Either path can be
+  // swapped without code changes.
   const HDRI_CONFIG = {
-    enabled: true,                 // Enable/disable environment mapping
-    path: '/startup.hdr',          // Path to HDRI file in public folder
-    intensity: 1.0,                // HDRI brightness (0-2+)
+    enabled: true,
+    metal: {
+      path: '/Studio.hdr',         // Soft studio-softbox HDR for metals
+      intensity: 1.0,              // envMapIntensity applied to metal materials
+    },
+    gem: {
+      path: '/startup.hdr',        // Contrasty HDR for gem fire/sparkle
+      intensity: 1.4,              // Gems usually want a brighter env
+    },
   };
 
   // ============================================================================
@@ -139,12 +159,91 @@ export function createScene(container) {
   rimLight.position.set(...LIGHT_POSITIONS.rimLight);
   scene.add(rimLight);
 
-  // Load and apply environment map (HDRI) for realistic reflections
+  // ----- HDR environments -----
+  // Both HDRs are equirectangular. We pre-filter them with PMREMGenerator so
+  // they can be sampled by PBR materials at any roughness without ringing.
+  const environments = { metal: null, gem: null };
+  let envMapsReady;
+
   if (HDRI_CONFIG.enabled) {
+    const pmrem = new PMREMGenerator(renderer);
+    pmrem.compileEquirectangularShader();
     const rgbeLoader = new RGBELoader();
-    rgbeLoader.load(HDRI_CONFIG.path, (texture) => {
-      texture.mapping = 3; // EquirectangularReflectionMapping
-      scene.environment = texture;
+
+    const loadEnv = (path) => new Promise((resolve, reject) => {
+      rgbeLoader.load(
+        path,
+        (texture) => {
+          texture.mapping = EquirectangularReflectionMapping;
+          const prefiltered = pmrem.fromEquirectangular(texture).texture;
+          texture.dispose();
+          resolve(prefiltered);
+        },
+        undefined,
+        reject
+      );
+    });
+
+    envMapsReady = Promise.all([
+      loadEnv(HDRI_CONFIG.metal.path),
+      loadEnv(HDRI_CONFIG.gem.path)
+    ])
+      .then(([metalEnv, gemEnv]) => {
+        environments.metal = metalEnv;
+        environments.gem = gemEnv;
+        // Default scene environment to the metal map so anything we don't
+        // classify still gets sensible reflections out of the box.
+        scene.environment = metalEnv;
+        pmrem.dispose();
+      })
+      .catch((err) => {
+        console.error('[viewer] failed to load HDR environments', err);
+        pmrem.dispose();
+      });
+  } else {
+    envMapsReady = Promise.resolve();
+  }
+
+  /**
+   * Decide whether a material should use the gem environment. We look at
+   * physical properties first (transmission / IOR / metalness) and fall back
+   * to the material name. Designers commonly name diamond materials
+   * "Diamond", "Gem", "CZ", etc.
+   * @param {import('three').Material} material
+   */
+  function isGemMaterial(material) {
+    if (!material) return false;
+    if (typeof material.transmission === 'number' && material.transmission > 0) return true;
+    if (
+      typeof material.ior === 'number' && material.ior >= 1.4 &&
+      (material.metalness ?? 0) < 0.3
+    ) {
+      return true;
+    }
+    const name = (material.name || '').toLowerCase();
+    return /diamond|gem|stone|sapphire|ruby|emerald|crystal|cz|topaz|amethyst/.test(name);
+  }
+
+  /**
+   * Walk a loaded model and assign the appropriate envMap + envMapIntensity
+   * to every material based on whether it looks like metal or a gem. Safe to
+   * call before HDRs finish loading — it awaits internally.
+   * @param {import('three').Object3D} root
+   */
+  async function applyMaterialEnvironments(root) {
+    await envMapsReady;
+    if (!environments.metal || !environments.gem) return;
+
+    root.traverse((obj) => {
+      if (!obj.isMesh) return;
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      for (const mat of mats) {
+        if (!mat) continue;
+        const gem = isGemMaterial(mat);
+        mat.envMap = gem ? environments.gem : environments.metal;
+        mat.envMapIntensity = gem ? HDRI_CONFIG.gem.intensity : HDRI_CONFIG.metal.intensity;
+        mat.needsUpdate = true;
+      }
     });
   }
 
@@ -191,5 +290,16 @@ export function createScene(container) {
     cancelAnimationFrame(raf);
   }
 
-  return { renderer, scene, camera, controls, canvas, setSize, start, stop };
+  return {
+    renderer,
+    scene,
+    camera,
+    controls,
+    canvas,
+    setSize,
+    start,
+    stop,
+    applyMaterialEnvironments,
+    environments
+  };
 }

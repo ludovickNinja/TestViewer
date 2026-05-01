@@ -51,6 +51,11 @@ function disposeMaterial(material) {
 export function disposeScene(viewer) {
   viewer.stop();
   disposeObject(viewer.scene);
+  // PMREM-prefiltered env maps live outside the scene graph (on
+  // scene.environment and on per-material .envMap slots), so the mesh walk
+  // above doesn't reliably free them. Dispose them explicitly.
+  viewer.environments?.metal?.dispose();
+  viewer.environments?.gem?.dispose();
   viewer.controls.dispose();
   viewer.renderer.dispose();
   if (viewer.canvas.parentElement) {
