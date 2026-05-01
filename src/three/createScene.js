@@ -24,6 +24,7 @@ import {
   WebGLRenderer
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 
 /**
  * Create a Three.js scene mounted inside `container`.
@@ -85,6 +86,12 @@ export function createScene(container) {
     autoRotateSpeed: 0.8,          // Speed of auto-rotation if enabled
   };
 
+  const HDRI_CONFIG = {
+    enabled: true,                 // Enable/disable environment mapping
+    path: '/startup.hdr',          // Path to HDRI file in public folder
+    intensity: 1.0,                // HDRI brightness (0-2+)
+  };
+
   // ============================================================================
   // SCENE SETUP — Use configurations above
   // ============================================================================
@@ -131,6 +138,16 @@ export function createScene(container) {
   const rimLight = new DirectionalLight(0xfff2dc, LIGHTING_CONFIG.rimLightIntensity);
   rimLight.position.set(...LIGHT_POSITIONS.rimLight);
   scene.add(rimLight);
+
+  // Load and apply environment map (HDRI) for realistic reflections
+  if (HDRI_CONFIG.enabled) {
+    const rgbeLoader = new RGBELoader();
+    rgbeLoader.load(HDRI_CONFIG.path, (texture) => {
+      texture.mapping = 3; // EquirectangularReflectionMapping
+      scene.environment = texture;
+      scene.background = texture;
+    });
+  }
 
   // Configure user interaction
   const controls = new OrbitControls(camera, canvas);
