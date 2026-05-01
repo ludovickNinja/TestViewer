@@ -34,7 +34,10 @@ import {
   transitionCameraTo
 } from './three/cameraViews.js';
 import { disposeScene } from './three/disposeScene.js';
+import { createInspector } from './three/inspector.js';
 import { readModelIdFromUrl, resolveModel } from './services/modelService.js';
+
+const DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
 
 // The viewer page lives at /viewer/index.html, so the logo in /branding/
 // is one level up.
@@ -72,6 +75,9 @@ function mount() {
   const viewer = createScene(layout.stage);
   const loading = createLoadingOverlay();
   layout.overlay.appendChild(loading.element);
+
+  // Debug inspector — only mounted with ?debug=1.
+  const inspector = DEBUG ? createInspector(viewer) : null;
 
   // ---- 5. Floating controls + thumbnail strip ----
   const controls = createViewerControls({
@@ -154,6 +160,7 @@ function mount() {
       fitCameraToObject(viewer.camera, viewer.controls, frame);
       thumbStrip.setActive(DEFAULT_VIEW);
       loading.hide();
+      inspector?.attach(root);
     })
     .catch((err) => {
       // Log details for us, but show only a friendly message to the customer.
@@ -172,6 +179,7 @@ function mount() {
   window.addEventListener('beforeunload', () => {
     abort.abort();
     ro.disconnect();
+    inspector?.dispose();
     disposeScene(viewer);
   });
 }
