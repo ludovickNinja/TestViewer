@@ -148,6 +148,9 @@ function mount() {
       const frame = frameModel(root);
       activeFrame = frame;
       viewer.scene.add(root);
+      // Assign the metal vs gem HDR per material. Awaits the env maps
+      // internally if they haven't finished loading yet.
+      void viewer.applyMaterialEnvironments(root);
       fitCameraToObject(viewer.camera, viewer.controls, frame);
       thumbStrip.setActive(DEFAULT_VIEW);
       loading.hide();
