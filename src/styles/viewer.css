@@ -397,3 +397,82 @@ body:has(.nc-app) {
   background: transparent;
   border-bottom: none;
 }
+
+/* ---------- Debug inspector (only mounted when ?debug=1) ---------- */
+
+.nc-inspector-panel {
+  position: fixed;
+  top: 72px;
+  left: 16px;
+  z-index: 9999;
+  width: 280px;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+  background: rgba(15, 15, 18, 0.92);
+  color: #e8e6e1;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 1.4;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+}
+
+.nc-inspector-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.nc-inspector-hint {
+  opacity: 0.5;
+  font-size: 11px;
+}
+
+.nc-inspector-body {
+  padding: 10px 12px;
+}
+
+.nc-inspector-body[data-empty="true"] {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.nc-inspector-body .nc-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+.nc-inspector-body .nc-row span {
+  opacity: 0.6;
+}
+
+.nc-inspector-body .nc-row b {
+  font-weight: 500;
+  text-align: right;
+  word-break: break-all;
+}
+
+.nc-inspector-body .nc-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.nc-inspector-body .nc-section {
+  margin: 10px 0 4px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.5;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 6px;
+}
+
+.nc-inspector-gui {
+  z-index: 9999 !important;
+}
