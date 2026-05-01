@@ -34,6 +34,7 @@ import {
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
+import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
 
 /**
  * Create a Three.js scene mounted inside `container`.
@@ -97,17 +98,17 @@ export function createScene(container) {
     autoRotateSpeed: 0.8,          // Speed of auto-rotation if enabled
   };
 
-  // Two HDRs: a soft "studio" environment for metals, and a contrastier
-  // environment with stronger highlights for gems. Either path can be
-  // swapped without code changes.
+  // Two environments: a soft studio map for metals, and a contrastier map
+  // with stronger pinpoint highlights for gems. Loader is picked from the
+  // file extension (.hdr -> RGBELoader, .exr -> EXRLoader).
   const HDRI_CONFIG = {
     enabled: true,
     metal: {
-      path: '/Studio.hdr',         // Soft studio-softbox HDR for metals
+      path: '/env_metal_014.hdr',  // Studio-softbox HDR for metals
       intensity: 1.0,              // envMapIntensity applied to metal materials
     },
     gem: {
-      path: '/startup.hdr',        // Contrasty HDR for gem fire/sparkle
+      path: '/env_gem_001.exr',    // Contrasty EXR for gem fire/sparkle
       intensity: 1.4,              // Gems usually want a brighter env
     },
   };
@@ -169,9 +170,18 @@ export function createScene(container) {
     const pmrem = new PMREMGenerator(renderer);
     pmrem.compileEquirectangularShader();
     const rgbeLoader = new RGBELoader();
+    const exrLoader = new EXRLoader();
+
+    // Pick the right loader based on file extension. Both produce equirect
+    // float textures we can hand straight to PMREMGenerator.
+    const loaderFor = (path) => {
+      const ext = path.split('.').pop().toLowerCase();
+      if (ext === 'exr') return exrLoader;
+      return rgbeLoader;
+    };
 
     const loadEnv = (path) => new Promise((resolve, reject) => {
-      rgbeLoader.load(
+      loaderFor(path).load(
         path,
         (texture) => {
           texture.mapping = EquirectangularReflectionMapping;
