@@ -11,8 +11,29 @@
 // Enable by appending `?debug=1` (or `&debug=1`) to the viewer URL.
 // ----------------------------------------------------------------------------
 
-import { BoxHelper, Raycaster, Vector2 } from 'three';
+import {
+  ACESFilmicToneMapping,
+  AgXToneMapping,
+  BoxHelper,
+  CineonToneMapping,
+  LinearToneMapping,
+  NeutralToneMapping,
+  NoToneMapping,
+  Raycaster,
+  ReinhardToneMapping,
+  Vector2
+} from 'three';
 import GUI from 'lil-gui';
+
+const TONE_MAPPING_PRESETS = {
+  None: NoToneMapping,
+  Linear: LinearToneMapping,
+  Reinhard: ReinhardToneMapping,
+  Cineon: CineonToneMapping,
+  ACESFilmic: ACESFilmicToneMapping,
+  AgX: AgXToneMapping,
+  Neutral: NeutralToneMapping
+};
 
 const MATERIAL_NUMERIC_PROPS = [
   ['metalness', 0, 1, 0.01],
@@ -67,11 +88,73 @@ export function createInspector(viewer) {
 
   const sceneFolder = gui.addFolder('Scene');
   sceneFolder.add(renderer, 'toneMappingExposure', 0, 5, 0.01).name('exposure');
+  const tmProxy = {
+    mode: keyForValue(TONE_MAPPING_PRESETS, renderer.toneMapping) || 'ACESFilmic'
+  };
+  sceneFolder
+    .add(tmProxy, 'mode', Object.keys(TONE_MAPPING_PRESETS))
+    .name('tone mapping')
+    .onChange((name) => {
+      renderer.toneMapping = TONE_MAPPING_PRESETS[name];
+      // Materials need to recompile shaders when the tone mapping mode changes.
+      scene.traverse((o) => {
+        if (o.isMesh) {
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          mats.forEach((m) => m && (m.needsUpdate = true));
+        }
+      });
+    });
   sceneFolder
     .add({ bg: '#' + scene.background.getHexString() }, 'bg')
     .name('background')
     .onChange((v) => scene.background.set(v));
   sceneFolder.close();
+
+  // ---- Lights ----
+  if (viewer.lights) {
+    const lightsFolder = gui.addFolder('Lights');
+    for (const [name, light] of Object.entries(viewer.lights)) {
+      const f = lightsFolder.addFolder(name);
+      f.add(light, 'visible');
+      f.add(light, 'intensity', 0, 10, 0.05);
+      if (light.color) {
+        f.addColor({ color: '#' + light.color.getHexString() }, 'color').onChange((v) =>
+          light.color.set(v)
+        );
+      }
+      if (light.groundColor) {
+        f.addColor({ ground: '#' + light.groundColor.getHexString() }, 'ground').onChange((v) =>
+          light.groundColor.set(v)
+        );
+      }
+      if (light.position && light.isDirectionalLight) {
+        f.add(light.position, 'x', -10, 10, 0.05).name('pos.x');
+        f.add(light.position, 'y', -10, 10, 0.05).name('pos.y');
+        f.add(light.position, 'z', -10, 10, 0.05).name('pos.z');
+      }
+      f.close();
+    }
+    lightsFolder.close();
+  }
+
+  // ---- Camera ----
+  const cameraFolder = gui.addFolder('Camera');
+  cameraFolder
+    .add(camera, 'fov', 10, 90, 1)
+    .onChange(() => camera.updateProjectionMatrix());
+  cameraFolder
+    .add(camera, 'near', 0.001, 1, 0.001)
+    .onChange(() => camera.updateProjectionMatrix());
+  cameraFolder
+    .add(camera, 'far', 1, 200, 1)
+    .onChange(() => camera.updateProjectionMatrix());
+  cameraFolder.add({
+    log: () => {
+      const { x, y, z } = camera.position;
+      console.log('camera position:', [+x.toFixed(3), +y.toFixed(3), +z.toFixed(3)]);
+    }
+  }, 'log').name('log position');
+  cameraFolder.close();
 
   // Highlight on click — also expose a list of pickable meshes for raycasting.
   function pickableMeshes() {
@@ -220,7 +303,55 @@ export function createInspector(viewer) {
       });
     }
 
+    const presets = selectionFolder.addFolder('Preset');
+    presets.add(
+      {
+        copy: async () => {
+          const snap = snapshot(mesh);
+          const text = JSON.stringify(snap, null, 2);
+          try {
+            await navigator.clipboard.writeText(text);
+            console.log('[inspector] copied preset to clipboard:\n' + text);
+          } catch (err) {
+            console.warn('[inspector] clipboard unavailable, logging instead:', err);
+            console.log(text);
+          }
+        }
+      },
+      'copy'
+    ).name('copy as JSON');
+    presets.add(
+      {
+        log: () => console.log('[inspector] selected:', mesh, snapshot(mesh))
+      },
+      'log'
+    ).name('log to console');
+    presets.close();
+
     selectionFolder.open();
+  }
+
+  function snapshot(mesh) {
+    const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+    const out = {
+      name: mesh.name || null,
+      type: mesh.type,
+      uuid: mesh.uuid,
+      visible: mesh.visible,
+      position: mesh.position.toArray().map((n) => +n.toFixed(4)),
+      rotation: [mesh.rotation.x, mesh.rotation.y, mesh.rotation.z].map((n) => +n.toFixed(4)),
+      scale: mesh.scale.toArray().map((n) => +n.toFixed(4))
+    };
+    if (mat) {
+      const matOut = { type: mat.type, name: mat.name || null };
+      if (mat.color) matOut.color = '#' + mat.color.getHexString();
+      for (const [prop] of MATERIAL_NUMERIC_PROPS) {
+        if (typeof mat[prop] === 'number') matOut[prop] = +mat[prop].toFixed(4);
+      }
+      if (typeof mat.wireframe === 'boolean') matOut.wireframe = mat.wireframe;
+      out.material = matOut;
+    }
+    return out;
   }
 
   function refreshHelper() {
@@ -270,6 +401,11 @@ function fmt(n) {
 
 function vec(v, unit = '') {
   return `${v.x.toFixed(3)}, ${v.y.toFixed(3)}, ${v.z.toFixed(3)}${unit ? ' ' + unit : ''}`;
+}
+
+function keyForValue(obj, value) {
+  for (const [k, v] of Object.entries(obj)) if (v === value) return k;
+  return null;
 }
 
 function escape(s) {
