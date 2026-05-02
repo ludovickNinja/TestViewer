@@ -50,7 +50,14 @@ import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
  *   start: () => void,
  *   stop: () => void,
  *   applyMaterialEnvironments: (root: import('three').Object3D) => Promise<void>,
- *   environments: { metal: import('three').Texture | null, gem: import('three').Texture | null }
+ *   environments: { metal: import('three').Texture | null, gem: import('three').Texture | null },
+ *   lights: {
+ *     ambient: import('three').AmbientLight,
+ *     hemi: import('three').HemisphereLight,
+ *     key: import('three').DirectionalLight,
+ *     fill: import('three').DirectionalLight,
+ *     rim: import('three').DirectionalLight
+ *   }
  * }}
  */
 export function createScene(container) {
@@ -145,8 +152,11 @@ export function createScene(container) {
   container.appendChild(canvas);
 
   // Add lights using configuration
-  scene.add(new AmbientLight(0xffffff, LIGHTING_CONFIG.ambientIntensity));
-  scene.add(new HemisphereLight(0xffffff, 0x1a1a1f, LIGHTING_CONFIG.hemisphereIntensity));
+  const ambientLight = new AmbientLight(0xffffff, LIGHTING_CONFIG.ambientIntensity);
+  scene.add(ambientLight);
+
+  const hemiLight = new HemisphereLight(0xffffff, 0x1a1a1f, LIGHTING_CONFIG.hemisphereIntensity);
+  scene.add(hemiLight);
 
   const keyLight = new DirectionalLight(0xffffff, LIGHTING_CONFIG.keyLightIntensity);
   keyLight.position.set(...LIGHT_POSITIONS.keyLight);
@@ -159,6 +169,14 @@ export function createScene(container) {
   const rimLight = new DirectionalLight(0xfff2dc, LIGHTING_CONFIG.rimLightIntensity);
   rimLight.position.set(...LIGHT_POSITIONS.rimLight);
   scene.add(rimLight);
+
+  const lights = {
+    ambient: ambientLight,
+    hemi: hemiLight,
+    key: keyLight,
+    fill: fillLight,
+    rim: rimLight
+  };
 
   // ----- HDR environments -----
   // Both HDRs are equirectangular. We pre-filter them with PMREMGenerator so
@@ -310,6 +328,7 @@ export function createScene(container) {
     start,
     stop,
     applyMaterialEnvironments,
-    environments
+    environments,
+    lights
   };
 }
