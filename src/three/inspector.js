@@ -83,7 +83,10 @@ export function createInspector(viewer) {
   document.body.appendChild(panel);
 
   // ---- lil-gui ----
-  const gui = new GUI({ title: 'Debug', container: document.body });
+  // No `container` option — lil-gui's default auto-place pins it to the
+  // top-right with position:fixed. Passing a container switches off auto-place
+  // and the panel ends up in normal document flow (off-screen on this layout).
+  const gui = new GUI({ title: 'Debug' });
   gui.domElement.classList.add('nc-inspector-gui');
 
   const sceneFolder = gui.addFolder('Scene');
