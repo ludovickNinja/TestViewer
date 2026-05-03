@@ -1,0 +1,32 @@
+{
+  "metals": [
+    {
+      "id": "14k-yellow",
+      "name": "14K Yellow Gold",
+      "color": "#d4af37",
+      "metalness": 1,
+      "roughness": 0.22
+    },
+    {
+      "id": "14k-white",
+      "name": "14K White Gold",
+      "color": "#e8e8e8",
+      "metalness": 1,
+      "roughness": 0.18
+    },
+    {
+      "id": "14k-rose",
+      "name": "14K Rose Gold",
+      "color": "#b76e79",
+      "metalness": 1,
+      "roughness": 0.24
+    },
+    {
+      "id": "platinum",
+      "name": "Platinum",
+      "color": "#d9d9d9",
+      "metalness": 1,
+      "roughness": 0.12
+    }
+  ]
+}

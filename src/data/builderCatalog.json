@@ -1,0 +1,18 @@
+{
+  "shanks": [
+    {
+      "id": "sample-solitaire-shank",
+      "name": "Sample Solitaire Shank",
+      "file": "/assets/builder/shanks/sample-solitaire-shank.glb",
+      "defaultMetal": "14k-white"
+    }
+  ],
+  "heads": [
+    {
+      "id": "sample-round-4-prong-head",
+      "name": "Sample Round 4-Prong Head",
+      "file": "/assets/builder/heads/sample-round-4-prong-head.glb",
+      "defaultMetal": "14k-white"
+    }
+  ]
+}

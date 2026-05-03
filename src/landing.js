@@ -62,6 +62,12 @@ function mount() {
             </button>
           </div>
         </form>
+
+        <div class="nc-landing__divider" role="presentation"></div>
+
+        <a class="nc-btn nc-btn--ghost nc-landing__builder" href="${baseUrl}builder/">
+          Builder
+        </a>
       </section>
 
       <footer class="nc-landing__footer">
