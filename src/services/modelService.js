@@ -72,12 +72,14 @@ export function sanitizeModelId(raw) {
  *   id: string,
  *   displayName: string,
  *   modelUrl: string,
+ *   materialOverridesUrl: string,
  *   thumbnails: Array<{ id: string, label: string, imageUrl: string }>,
  * }}
  */
 export function resolveModel(id) {
   const baseUrl = import.meta.env.BASE_URL ?? '/';
   const modelUrl = `${baseUrl}models/${id}.glb`;
+  const materialOverridesUrl = `${baseUrl}material-overrides/${id}.json`;
 
   const thumbnails = VIEW_IDS.map((view) => ({
     id: view.id,
@@ -91,8 +93,35 @@ export function resolveModel(id) {
     // database, this could become "Cushion Halo (NC12345)" etc.
     displayName: id,
     modelUrl,
+    materialOverridesUrl,
     thumbnails
   };
+}
+
+/**
+ * Fetch the material overrides sidecar for a given preview ID, if one exists.
+ *
+ * Override files live at `/public/material-overrides/<id>.json`. Each top-
+ * level key is a material name, and the value is a partial PBR override
+ * applied on top of the heuristic envMap assignment in createScene.js.
+ *
+ * Example:
+ *   { "HEAD": { "envMap": "gem", "envMapIntensity": 1.6 },
+ *     "SHANK": { "envMap": "metal", "metalness": 1, "roughness": 0.18 } }
+ *
+ * @param {string} url - The URL returned by `resolveModel(id).materialOverridesUrl`.
+ * @returns {Promise<Record<string, Record<string, unknown>> | null>}
+ */
+export async function fetchMaterialOverrides(url) {
+  try {
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) return null; // 404 = no overrides yet, that's fine
+    const data = await res.json();
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+    return data;
+  } catch {
+    return null;
+  }
 }
 
 /**

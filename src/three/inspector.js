@@ -7,6 +7,13 @@
 //     side panel
 //   - tweak the selected mesh's transform, visibility and PBR material
 //     parameters live via lil-gui
+//   - swap its environment map between the metal HDR, the gem HDR or none
+//
+// Every material change is recorded into a per-material overrides map keyed
+// by `material.name`. The Overrides folder lets you copy that map to the
+// clipboard or download it as `<modelId>.materials.json`. Drop the file into
+// `public/material-overrides/` and applyMaterialEnvironments will pick it
+// up on the next load.
 //
 // Enable by appending `?debug=1` (or `&debug=1`) to the viewer URL.
 // ----------------------------------------------------------------------------
@@ -66,6 +73,15 @@ export function createInspector(viewer) {
   let boxHelper = null;
   /** @type {GUI | null} */
   let selectionFolder = null;
+  /** Model id used to name the downloaded overrides file. */
+  let modelId = null;
+  /**
+   * Per-material override accumulator, keyed by `material.name`. Populated
+   * from the sidecar JSON on attach() and updated whenever the user moves a
+   * slider in the Material section of the Selection folder.
+   * @type {Map<string, Record<string, unknown>>}
+   */
+  const overrides = new Map();
 
   // ---- Panel ----
   const panel = document.createElement('div');
@@ -83,7 +99,10 @@ export function createInspector(viewer) {
   document.body.appendChild(panel);
 
   // ---- lil-gui ----
-  const gui = new GUI({ title: 'Debug', container: document.body });
+  // No `container` option — lil-gui's default auto-place pins it to the
+  // top-right with position:fixed. Passing a container switches off auto-place
+  // and the panel ends up in normal document flow (off-screen on this layout).
+  const gui = new GUI({ title: 'Debug' });
   gui.domElement.classList.add('nc-inspector-gui');
 
   const sceneFolder = gui.addFolder('Scene');
@@ -155,6 +174,46 @@ export function createInspector(viewer) {
     }
   }, 'log').name('log position');
   cameraFolder.close();
+
+  // ---- Overrides ----
+  // Aggregate of every per-material change made through the Selection folder,
+  // serialised to the same JSON format that applyMaterialEnvironments reads
+  // from `public/material-overrides/<id>.json`.
+  const overridesFolder = gui.addFolder('Overrides');
+  overridesFolder.add(
+    {
+      copy: async () => {
+        const text = JSON.stringify(overridesAsObject(), null, 2);
+        try {
+          await navigator.clipboard.writeText(text);
+          console.log('[inspector] copied overrides to clipboard:\n' + text);
+        } catch (err) {
+          console.warn('[inspector] clipboard unavailable, logging instead:', err);
+          console.log(text);
+        }
+      }
+    },
+    'copy'
+  ).name('copy JSON');
+  overridesFolder.add(
+    {
+      download: () => {
+        const filename = `${modelId || 'model'}.json`;
+        downloadJson(filename, overridesAsObject());
+      }
+    },
+    'download'
+  ).name('download .json');
+  overridesFolder.add(
+    {
+      clear: () => {
+        overrides.clear();
+        console.log('[inspector] overrides cleared');
+      }
+    },
+    'clear'
+  ).name('clear');
+  overridesFolder.close();
 
   // Highlight on click — also expose a list of pickable meshes for raycasting.
   function pickableMeshes() {
@@ -288,14 +347,36 @@ export function createInspector(viewer) {
     const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
     if (mat) {
       const m = selectionFolder.addFolder('Material');
+
+      // Env map dropdown — pick the metal HDR, the gem HDR, or none. Saved to
+      // overrides so a one-off correction (e.g. a gem mis-classified as metal)
+      // survives a reload via the sidecar.
+      if (viewer.environments) {
+        const envChoice = currentEnvChoice(mat, viewer.environments);
+        m.add({ env: envChoice }, 'env', ['metal', 'gem', 'none'])
+          .name('envMap')
+          .onChange((choice) => {
+            if (choice === 'metal') mat.envMap = viewer.environments.metal;
+            else if (choice === 'gem') mat.envMap = viewer.environments.gem;
+            else mat.envMap = null;
+            mat.needsUpdate = true;
+            recordOverride(mat.name, 'envMap', choice);
+            renderInfo(mesh);
+          });
+      }
+
       if (mat.color) {
-        m.addColor({ color: '#' + mat.color.getHexString() }, 'color').onChange((v) =>
-          mat.color.set(v)
-        );
+        m.addColor({ color: '#' + mat.color.getHexString() }, 'color').onChange((v) => {
+          mat.color.set(v);
+          recordOverride(mat.name, 'color', v);
+        });
       }
       for (const [prop, min, max, step] of MATERIAL_NUMERIC_PROPS) {
         if (typeof mat[prop] === 'number') {
-          m.add(mat, prop, min, max, step);
+          m.add(mat, prop, min, max, step).onChange((v) => {
+            recordOverride(mat.name, prop, v);
+            renderInfo(mesh);
+          });
         }
       }
       m.add({ wireframe: !!mat.wireframe }, 'wireframe').onChange((v) => {
@@ -359,6 +440,19 @@ export function createInspector(viewer) {
     if (selected) renderInfo(selected);
   }
 
+  function recordOverride(matName, prop, value) {
+    if (!matName) return; // unnamed materials can't be addressed by the sidecar
+    const current = overrides.get(matName) ?? {};
+    current[prop] = typeof value === 'number' ? +value.toFixed(4) : value;
+    overrides.set(matName, current);
+  }
+
+  function overridesAsObject() {
+    const out = {};
+    for (const [name, props] of overrides) out[name] = { ...props };
+    return out;
+  }
+
   // Keep the BoxHelper in sync if the model animates / camera moves.
   let raf = 0;
   function tick() {
@@ -376,8 +470,17 @@ export function createInspector(viewer) {
   window.addEventListener('keydown', onKey);
 
   return {
-    attach(root) {
+    attach(root, opts = {}) {
       modelRoot = root;
+      modelId = opts.modelId ?? null;
+      // Seed the overrides map from the sidecar so existing tweaks are
+      // included in the next "copy JSON" / "download" without the user having
+      // to re-apply every change.
+      if (opts.initialOverrides && typeof opts.initialOverrides === 'object') {
+        for (const [name, props] of Object.entries(opts.initialOverrides)) {
+          if (props && typeof props === 'object') overrides.set(name, { ...props });
+        }
+      }
     },
     dispose() {
       cancelAnimationFrame(raf);
@@ -406,6 +509,28 @@ function vec(v, unit = '') {
 function keyForValue(obj, value) {
   for (const [k, v] of Object.entries(obj)) if (v === value) return k;
   return null;
+}
+
+function currentEnvChoice(mat, environments) {
+  if (!mat.envMap) return 'none';
+  if (mat.envMap === environments.metal) return 'metal';
+  if (mat.envMap === environments.gem) return 'gem';
+  // Material is using some other env (e.g. a previously-set value not from
+  // our two HDRs). Treat as "metal" for the dropdown so the user has a
+  // sensible starting point — switching the dropdown will overwrite it.
+  return 'metal';
+}
+
+function downloadJson(filename, data) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 function escape(s) {

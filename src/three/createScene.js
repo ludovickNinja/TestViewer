@@ -252,13 +252,52 @@ export function createScene(container) {
     return /diamond|gem|stone|sapphire|ruby|emerald|crystal|cz|topaz|amethyst/.test(name);
   }
 
+  // Numeric PBR props the override sidecar is allowed to set. Anything outside
+  // this list is ignored to keep override files from drifting into a free-for-
+  // all of arbitrary material mutations.
+  const OVERRIDE_NUMERIC_PROPS = [
+    'metalness',
+    'roughness',
+    'transmission',
+    'thickness',
+    'ior',
+    'clearcoat',
+    'clearcoatRoughness',
+    'sheen',
+    'envMapIntensity',
+    'opacity'
+  ];
+
+  function applyOverrideToMaterial(mat, override) {
+    if (!override) return;
+    if (override.envMap === 'metal') mat.envMap = environments.metal;
+    else if (override.envMap === 'gem') mat.envMap = environments.gem;
+    else if (override.envMap === 'none') mat.envMap = null;
+
+    for (const prop of OVERRIDE_NUMERIC_PROPS) {
+      if (typeof override[prop] === 'number' && typeof mat[prop] === 'number') {
+        mat[prop] = override[prop];
+      }
+    }
+    if (typeof override.color === 'string' && mat.color) {
+      mat.color.set(override.color);
+    }
+    mat.needsUpdate = true;
+  }
+
   /**
    * Walk a loaded model and assign the appropriate envMap + envMapIntensity
    * to every material based on whether it looks like metal or a gem. Safe to
    * call before HDRs finish loading — it awaits internally.
+   *
+   * If an `overrides` object (keyed by material name) is provided, it's
+   * applied on top of the heuristic so designer-tuned values from the
+   * sidecar JSON win over the default classification.
+   *
    * @param {import('three').Object3D} root
+   * @param {Record<string, Record<string, unknown>> | null} [overrides]
    */
-  async function applyMaterialEnvironments(root) {
+  async function applyMaterialEnvironments(root, overrides = null) {
     await envMapsReady;
     if (!environments.metal || !environments.gem) return;
 
@@ -271,6 +310,10 @@ export function createScene(container) {
         mat.envMap = gem ? environments.gem : environments.metal;
         mat.envMapIntensity = gem ? HDRI_CONFIG.gem.intensity : HDRI_CONFIG.metal.intensity;
         mat.needsUpdate = true;
+
+        if (overrides && mat.name && overrides[mat.name]) {
+          applyOverrideToMaterial(mat, overrides[mat.name]);
+        }
       }
     });
   }
