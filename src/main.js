@@ -35,7 +35,7 @@ import {
 } from './three/cameraViews.js';
 import { disposeScene } from './three/disposeScene.js';
 import { createInspector } from './three/inspector.js';
-import { readModelIdFromUrl, resolveModel } from './services/modelService.js';
+import { fetchMaterialOverrides, readModelIdFromUrl, resolveModel } from './services/modelService.js';
 
 const DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
 
@@ -145,22 +145,31 @@ function mount() {
 
   const abort = new AbortController();
 
-  loadModel({
-    url: resolved.modelUrl,
-    signal: abort.signal,
-    onProgress: ({ ratio }) => loading.setProgress(ratio)
-  })
-    .then(({ root }) => {
+  // Fetch the optional material-overrides sidecar in parallel with the model
+  // so we can apply it as soon as both arrive. 404 is fine — it just means no
+  // overrides have been authored for this model yet.
+  const overridesPromise = fetchMaterialOverrides(resolved.materialOverridesUrl);
+
+  Promise.all([
+    loadModel({
+      url: resolved.modelUrl,
+      signal: abort.signal,
+      onProgress: ({ ratio }) => loading.setProgress(ratio)
+    }),
+    overridesPromise
+  ])
+    .then(([{ root }, overrides]) => {
       const frame = frameModel(root);
       activeFrame = frame;
       viewer.scene.add(root);
-      // Assign the metal vs gem HDR per material. Awaits the env maps
-      // internally if they haven't finished loading yet.
-      void viewer.applyMaterialEnvironments(root);
+      // Assign the metal vs gem HDR per material, then apply the sidecar
+      // overrides on top. Awaits the env maps internally if they haven't
+      // finished loading yet.
+      void viewer.applyMaterialEnvironments(root, overrides);
       fitCameraToObject(viewer.camera, viewer.controls, frame);
       thumbStrip.setActive(DEFAULT_VIEW);
       loading.hide();
-      inspector?.attach(root);
+      inspector?.attach(root, { modelId: id, initialOverrides: overrides });
     })
     .catch((err) => {
       // Log details for us, but show only a friendly message to the customer.
