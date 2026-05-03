@@ -133,6 +133,20 @@
   margin-top: var(--space-3);
 }
 
+/* Soft separator between the preview-code form and the Builder link. */
+.nc-landing__divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: var(--space-3) 0 var(--space-1);
+}
+
+.nc-landing__builder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
 /* ---- Buttons ---- */
 
 .nc-btn {
