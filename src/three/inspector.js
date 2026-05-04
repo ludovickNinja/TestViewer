@@ -8,12 +8,18 @@
 //   - tweak the selected mesh's transform, visibility and PBR material
 //     parameters live via lil-gui
 //   - swap its environment map between the metal HDR, the gem HDR or none
+//   - one-shot apply a preset from the shared material library
+//     (src/data/materialPresets.json) — metals (14k yellow / white / rose,
+//     18k yellow, platinum, silver) and gems (diamond, moissanite, sapphire,
+//     ruby, emerald, amethyst, topaz, citrine)
 //
 // Every material change is recorded into a per-material overrides map keyed
 // by `material.name`. The Overrides folder lets you copy that map to the
 // clipboard or download it as `<modelId>.materials.json`. Drop the file into
 // `public/material-overrides/` and applyMaterialEnvironments will pick it
-// up on the next load.
+// up on the next load. Presets applied through the dropdown are recorded the
+// same way, so a single "apply Diamond + tweak + download" pass produces a
+// complete sidecar entry.
 //
 // Enable by appending `?debug=1` (or `&debug=1`) to the viewer URL.
 // ----------------------------------------------------------------------------
@@ -31,6 +37,8 @@ import {
   Vector2
 } from 'three';
 import GUI from 'lil-gui';
+import materialPresets from '../data/materialPresets.json';
+import { applyPreset, findPreset, listPresets } from './applyPreset.js';
 
 const TONE_MAPPING_PRESETS = {
   None: NoToneMapping,
@@ -48,12 +56,27 @@ const MATERIAL_NUMERIC_PROPS = [
   ['transmission', 0, 1, 0.01],
   ['thickness', 0, 5, 0.01],
   ['ior', 1, 2.333, 0.001],
+  ['dispersion', 0, 2, 0.01],
   ['clearcoat', 0, 1, 0.01],
   ['clearcoatRoughness', 0, 1, 0.01],
   ['sheen', 0, 1, 0.01],
   ['envMapIntensity', 0, 5, 0.05],
-  ['opacity', 0, 1, 0.01]
+  ['opacity', 0, 1, 0.01],
+  ['attenuationDistance', 0.1, 20, 0.05]
 ];
+
+// Build the "Apply preset" dropdown options once. lil-gui treats object keys
+// as visible labels and values as the underlying selection. Empty string is
+// the "(none)" placeholder, kept first so the dropdown always lands there
+// after a preset is applied.
+const PRESET_DROPDOWN_OPTIONS = (() => {
+  const options = { '(none)': '' };
+  for (const { id, group, label } of listPresets(materialPresets)) {
+    const groupLabel = group === 'metals' ? 'Metal' : 'Gem';
+    options[`${groupLabel}: ${label}`] = id;
+  }
+  return options;
+})();
 
 /**
  * Create an inspector bound to a viewer (returned from createScene()).
@@ -348,9 +371,43 @@ export function createInspector(viewer) {
     if (mat) {
       const m = selectionFolder.addFolder('Material');
 
-      // Env map dropdown — pick the metal HDR, the gem HDR, or none. Saved to
-      // overrides so a one-off correction (e.g. a gem mis-classified as metal)
-      // survives a reload via the sidecar.
+      // --- Apply preset ----------------------------------------------------
+      // One-shot dropdown: pick a metal or gem from the shared library and
+      // every PBR knob the preset specifies is pushed onto the material
+      // (envMap routing included) and recorded into the overrides map so the
+      // resulting state persists in the sidecar JSON. The dropdown resets to
+      // "(none)" after each application — it's an "apply" action, not a
+      // selected state.
+      const presetProxy = { preset: '' };
+      const presetController = m
+        .add(presetProxy, 'preset', PRESET_DROPDOWN_OPTIONS)
+        .name('apply preset')
+        .onChange((id) => {
+          if (!id) return;
+          const preset = findPreset(materialPresets, id);
+          if (!preset) return;
+          applyPreset(mat, preset, viewer.environments);
+          // Record every relevant field of the preset into overrides so a
+          // download captures the full applied state, not just subsequent
+          // manual tweaks.
+          for (const [k, v] of Object.entries(preset)) {
+            if (k === 'label' || k.startsWith('$')) continue;
+            recordOverride(mat.name, k, v);
+          }
+          // Bring all material sliders / pickers in this folder back in sync
+          // with the freshly-mutated material.
+          m.controllersRecursive().forEach((c) => c.updateDisplay());
+          renderInfo(mesh);
+          // Park the dropdown back at "(none)" so the next apply re-fires
+          // even if the user picks the same preset again.
+          presetProxy.preset = '';
+          presetController.updateDisplay();
+        });
+
+      // --- Env map dropdown ------------------------------------------------
+      // Pick the metal HDR, the gem HDR, or none. Saved to overrides so a
+      // one-off correction (e.g. a gem mis-classified as metal) survives a
+      // reload via the sidecar.
       if (viewer.environments) {
         const envChoice = currentEnvChoice(mat, viewer.environments);
         m.add({ env: envChoice }, 'env', ['metal', 'gem', 'none'])
@@ -369,6 +426,17 @@ export function createInspector(viewer) {
         m.addColor({ color: '#' + mat.color.getHexString() }, 'color').onChange((v) => {
           mat.color.set(v);
           recordOverride(mat.name, 'color', v);
+        });
+      }
+      // Some MeshPhysicalMaterial-only properties (attenuationColor) sit next
+      // to color in the gem story, so expose them here when present.
+      if (mat.attenuationColor) {
+        m.addColor(
+          { attenuationColor: '#' + mat.attenuationColor.getHexString() },
+          'attenuationColor'
+        ).onChange((v) => {
+          mat.attenuationColor.set(v);
+          recordOverride(mat.name, 'attenuationColor', v);
         });
       }
       for (const [prop, min, max, step] of MATERIAL_NUMERIC_PROPS) {
@@ -426,8 +494,11 @@ export function createInspector(viewer) {
     if (mat) {
       const matOut = { type: mat.type, name: mat.name || null };
       if (mat.color) matOut.color = '#' + mat.color.getHexString();
+      if (mat.attenuationColor) matOut.attenuationColor = '#' + mat.attenuationColor.getHexString();
       for (const [prop] of MATERIAL_NUMERIC_PROPS) {
-        if (typeof mat[prop] === 'number') matOut[prop] = +mat[prop].toFixed(4);
+        if (typeof mat[prop] === 'number' && Number.isFinite(mat[prop])) {
+          matOut[prop] = +mat[prop].toFixed(4);
+        }
       }
       if (typeof mat.wireframe === 'boolean') matOut.wireframe = mat.wireframe;
       out.material = matOut;
