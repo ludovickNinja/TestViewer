@@ -261,12 +261,19 @@ export function createScene(container) {
     'transmission',
     'thickness',
     'ior',
+    'dispersion',
     'clearcoat',
     'clearcoatRoughness',
     'sheen',
     'envMapIntensity',
-    'opacity'
+    'opacity',
+    'attenuationDistance'
   ];
+
+  // Keys whose value is a hex color string and whose material slot is a
+  // Three.js Color (set via slot.set('#rrggbb')). Kept in sync with
+  // src/three/applyPreset.js's COLOR_PROPS.
+  const OVERRIDE_COLOR_PROPS = ['color', 'attenuationColor', 'sheenColor', 'emissive'];
 
   function applyOverrideToMaterial(mat, override) {
     if (!override) return;
@@ -279,8 +286,11 @@ export function createScene(container) {
         mat[prop] = override[prop];
       }
     }
-    if (typeof override.color === 'string' && mat.color) {
-      mat.color.set(override.color);
+    for (const prop of OVERRIDE_COLOR_PROPS) {
+      const value = override[prop];
+      if (typeof value !== 'string') continue;
+      const slot = mat[prop];
+      if (slot && typeof slot.set === 'function') slot.set(value);
     }
     mat.needsUpdate = true;
   }

@@ -1,0 +1,175 @@
+{
+  "$comment": "Shared material preset library. Two top-level groups: metals and gems. Each preset is a flat key/value map consumable by applyPreset() (src/three/applyPreset.js) and by the override-sidecar pipeline (createScene.js applyOverrideToMaterial). Numbers are starting points tuned against env_metal_014.hdr / env_gem_001.exr — refine via /viewer/?id=<id>&debug=1 and save back into per-model overrides under public/material-overrides/.",
+  "metals": {
+    "14k-yellow-gold": {
+      "label": "14K Yellow Gold",
+      "color": "#d4af37",
+      "metalness": 1,
+      "roughness": 0.22,
+      "envMap": "metal",
+      "envMapIntensity": 1.0
+    },
+    "18k-yellow-gold": {
+      "label": "18K Yellow Gold",
+      "color": "#f4c542",
+      "metalness": 1,
+      "roughness": 0.20,
+      "envMap": "metal",
+      "envMapIntensity": 1.0
+    },
+    "14k-white-gold": {
+      "label": "14K White Gold",
+      "color": "#e8e8e8",
+      "metalness": 1,
+      "roughness": 0.18,
+      "envMap": "metal",
+      "envMapIntensity": 1.0
+    },
+    "14k-rose-gold": {
+      "label": "14K Rose Gold",
+      "color": "#b76e79",
+      "metalness": 1,
+      "roughness": 0.24,
+      "envMap": "metal",
+      "envMapIntensity": 1.0
+    },
+    "platinum": {
+      "label": "Platinum",
+      "color": "#d9d9d9",
+      "metalness": 1,
+      "roughness": 0.12,
+      "envMap": "metal",
+      "envMapIntensity": 1.1
+    },
+    "silver": {
+      "label": "Sterling Silver",
+      "color": "#f0f0f0",
+      "metalness": 1,
+      "roughness": 0.10,
+      "envMap": "metal",
+      "envMapIntensity": 1.1
+    }
+  },
+  "gems": {
+    "diamond": {
+      "label": "Diamond",
+      "color": "#ffffff",
+      "metalness": 0,
+      "roughness": 0,
+      "transmission": 1,
+      "ior": 2.333,
+      "dispersion": 0.8,
+      "thickness": 1.5,
+      "clearcoat": 1,
+      "clearcoatRoughness": 0,
+      "envMap": "gem",
+      "envMapIntensity": 1.8
+    },
+    "moissanite": {
+      "label": "Moissanite",
+      "color": "#ffffff",
+      "metalness": 0,
+      "roughness": 0,
+      "transmission": 1,
+      "ior": 2.333,
+      "dispersion": 1.2,
+      "thickness": 1.5,
+      "clearcoat": 1,
+      "clearcoatRoughness": 0,
+      "envMap": "gem",
+      "envMapIntensity": 2.0
+    },
+    "sapphire-blue": {
+      "label": "Blue Sapphire",
+      "color": "#0f52ba",
+      "metalness": 0,
+      "roughness": 0,
+      "transmission": 1,
+      "ior": 1.77,
+      "dispersion": 0.15,
+      "thickness": 1.5,
+      "attenuationColor": "#0a3a99",
+      "attenuationDistance": 1.5,
+      "envMap": "gem",
+      "envMapIntensity": 1.4
+    },
+    "sapphire-pink": {
+      "label": "Pink Sapphire",
+      "color": "#f49ac1",
+      "metalness": 0,
+      "roughness": 0,
+      "transmission": 1,
+      "ior": 1.77,
+      "dispersion": 0.15,
+      "thickness": 1.5,
+      "attenuationColor": "#d96a98",
+      "attenuationDistance": 1.5,
+      "envMap": "gem",
+      "envMapIntensity": 1.4
+    },
+    "ruby": {
+      "label": "Ruby",
+      "color": "#9b111e",
+      "metalness": 0,
+      "roughness": 0,
+      "transmission": 1,
+      "ior": 1.77,
+      "dispersion": 0.15,
+      "thickness": 1.5,
+      "attenuationColor": "#7a0d18",
+      "attenuationDistance": 1.5,
+      "envMap": "gem",
+      "envMapIntensity": 1.4
+    },
+    "emerald": {
+      "label": "Emerald",
+      "color": "#1f7a4d",
+      "metalness": 0,
+      "roughness": 0.02,
+      "transmission": 1,
+      "ior": 1.58,
+      "dispersion": 0.10,
+      "thickness": 1.5,
+      "attenuationColor": "#155a37",
+      "attenuationDistance": 1.8,
+      "envMap": "gem",
+      "envMapIntensity": 1.3
+    },
+    "amethyst": {
+      "label": "Amethyst",
+      "color": "#7d3cff",
+      "metalness": 0,
+      "roughness": 0,
+      "transmission": 1,
+      "ior": 1.55,
+      "dispersion": 0.10,
+      "thickness": 1.5,
+      "envMap": "gem",
+      "envMapIntensity": 1.3
+    },
+    "topaz-blue": {
+      "label": "Blue Topaz",
+      "color": "#9bd1ff",
+      "metalness": 0,
+      "roughness": 0,
+      "transmission": 1,
+      "ior": 1.62,
+      "dispersion": 0.12,
+      "thickness": 1.5,
+      "envMap": "gem",
+      "envMapIntensity": 1.3
+    },
+    "citrine": {
+      "label": "Citrine",
+      "color": "#e4a73a",
+      "metalness": 0,
+      "roughness": 0,
+      "transmission": 1,
+      "ior": 1.55,
+      "dispersion": 0.10,
+      "thickness": 1.5,
+      "envMap": "gem",
+      "envMapIntensity": 1.3
+    }
+  }
+}
