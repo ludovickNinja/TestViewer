@@ -77,9 +77,14 @@ export function createScene(container) {
   };
 
   const RENDERER_CONFIG = {
-    toneMappingExposure: 1.8,      // Overall brightness (higher = brighter)
+    toneMappingExposure: 2.4,      // Overall brightness (higher = brighter)
     pixelRatioCap: 2,              // Max device pixel ratio (1-2 recommended)
   };
+
+  // Multiplier on scene.environment's contribution to all PBR materials.
+  // Three.js >= 0.165. Useful when the HDR itself is on the dim side and you
+  // want to brighten indirect light without re-exporting the map.
+  const SCENE_ENV_INTENSITY = 1.0;
 
   const LIGHTING_CONFIG = {
     ambientIntensity: 0.8,         // Uniform light preventing pitch-black shadows
@@ -112,11 +117,11 @@ export function createScene(container) {
     enabled: true,
     metal: {
       path: '/env_metal_014.hdr',  // Studio-softbox HDR for metals
-      intensity: 1.0,              // envMapIntensity applied to metal materials
+      intensity: 1.5,              // envMapIntensity applied to metal materials
     },
     gem: {
       path: '/env_gem_001.exr',    // Contrasty EXR for gem fire/sparkle
-      intensity: 1.4,              // Gems usually want a brighter env
+      intensity: 2.0,              // Gems usually want a brighter env
     },
   };
 
@@ -126,6 +131,7 @@ export function createScene(container) {
 
   const scene = new Scene();
   scene.background = new Color(SCENE_CONFIG.backgroundColor);
+  scene.environmentIntensity = SCENE_ENV_INTENSITY;
 
   const camera = new PerspectiveCamera(
     CAMERA_CONFIG.fov,

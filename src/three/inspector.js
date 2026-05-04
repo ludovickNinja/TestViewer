@@ -29,6 +29,7 @@ import {
   AgXToneMapping,
   BoxHelper,
   CineonToneMapping,
+  Color,
   LinearToneMapping,
   NeutralToneMapping,
   NoToneMapping,
@@ -130,6 +131,9 @@ export function createInspector(viewer) {
 
   const sceneFolder = gui.addFolder('Scene');
   sceneFolder.add(renderer, 'toneMappingExposure', 0, 5, 0.01).name('exposure');
+  if (typeof scene.environmentIntensity === 'number') {
+    sceneFolder.add(scene, 'environmentIntensity', 0, 5, 0.05).name('env intensity');
+  }
   const tmProxy = {
     mode: keyForValue(TONE_MAPPING_PRESETS, renderer.toneMapping) || 'ACESFilmic'
   };
@@ -146,10 +150,40 @@ export function createInspector(viewer) {
         }
       });
     });
+
+  // Background source: solid color (default) vs. showing one of the loaded
+  // HDRs as the visible backdrop. Useful as a sanity check — if the gem env
+  // looks flat-grey when shown, that's why diamonds aren't sparkling.
+  const bgColor = scene.background?.isColor
+    ? '#' + scene.background.getHexString()
+    : '#f4f4f5';
+  const bgState = { source: 'color', color: bgColor };
+  function applyBackground() {
+    if (bgState.source === 'metal' && viewer.environments?.metal) {
+      scene.background = viewer.environments.metal;
+    } else if (bgState.source === 'gem' && viewer.environments?.gem) {
+      scene.background = viewer.environments.gem;
+    } else if (bgState.source === 'none') {
+      scene.background = null;
+    } else if (scene.background?.isColor) {
+      scene.background.set(bgState.color);
+    } else {
+      scene.background = new Color(bgState.color);
+    }
+  }
+  const bgSources = viewer.environments
+    ? ['color', 'metal', 'gem', 'none']
+    : ['color', 'none'];
   sceneFolder
-    .add({ bg: '#' + scene.background.getHexString() }, 'bg')
-    .name('background')
-    .onChange((v) => scene.background.set(v));
+    .add(bgState, 'source', bgSources)
+    .name('bg source')
+    .onChange(applyBackground);
+  sceneFolder
+    .addColor(bgState, 'color')
+    .name('bg color')
+    .onChange(() => {
+      if (bgState.source === 'color') applyBackground();
+    });
   sceneFolder.close();
 
   // ---- Lights ----
