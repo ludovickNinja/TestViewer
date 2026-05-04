@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0b0c" />
+    <meta name="description" content="NOAM CARVER private 3D jewelry preview." />
+    <title>NOAM CARVER · Preview</title>
+    <link rel="icon" type="image/svg+xml" href="./branding/noam-carver-logo.svg" />
+    <style>
+      /* Inline so the page is never visually blank, even if the JS bundle
+         fails to load (e.g. Pages serving raw source instead of the build). */
+      html, body { margin: 0; background: #0b0b0c; color: #e8e6e1; font-family: system-ui, -apple-system, sans-serif; }
+      #app:empty::before { content: "Loading…"; display: block; padding: 4rem 1rem; text-align: center; opacity: 0.6; }
+      .nc-fallback { padding: 3rem 1rem; text-align: center; max-width: 32rem; margin: 0 auto; }
+    </style>
+    <script type="module" crossorigin src="/TestViewer/assets/main-GsFCD19o.js"></script>
+    <link rel="modulepreload" crossorigin href="/TestViewer/assets/base-Dr4DB6T4.js">
+    <link rel="modulepreload" crossorigin href="/TestViewer/assets/modelService-Daq0-EtN.js">
+    <link rel="stylesheet" crossorigin href="/TestViewer/assets/base-BegUI-d_.css">
+    <link rel="stylesheet" crossorigin href="/TestViewer/assets/main-UvlbKV5n.css">
+  </head>
+  <body>
+    <!-- The landing page mounts here. See src/landing.js. -->
+    <div id="app"></div>
+    <noscript>
+      <div class="nc-fallback">
+        <h1>NOAM CARVER</h1>
+        <p>This preview viewer needs JavaScript. Please enable it and reload.</p>
+      </div>
+    </noscript>
+    <script>
+      // When GitHub Pages serves the raw source instead of the Vite build output,
+      // the browser rejects CSS module imports (wrong MIME type) and fires an
+      // error event on the script element. We catch it here and show a clear
+      // message instead of the eternal "Loading…" placeholder.
+      // In the Vite build the original script element is replaced entirely, so
+      // document.getElementById("app-bundle") returns null and this is a no-op.
+      (function () {
+        var s = document.getElementById('app-bundle');
+        if (!s) return;
+        s.addEventListener('error', function () {
+          var app = document.getElementById('app');
+          if (app && !app.firstChild) {
+            app.innerHTML =
+              '<div class="nc-fallback">' +
+              '<h1>NOAM CARVER</h1>' +
+              '<p>This preview could not load. Please try refreshing the page.<br>' +
+              'If you are the site owner, go to <strong>Settings → Pages → Source</strong> ' +
+              'and select <strong>Deploy from a branch → gh-pages</strong>.</p>' +
+              '</div>';
+          }
+        });
+      }());
+    </script>
+  </body>
+</html>

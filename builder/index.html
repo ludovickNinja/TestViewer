@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0b0c" />
+    <meta name="description" content="NOAM CARVER jewelry builder — assemble a shank and head with metal presets." />
+    <title>NOAM CARVER · Builder</title>
+    <!-- Logo lives one level up because this page is at /builder/index.html -->
+    <link rel="icon" type="image/svg+xml" href="../branding/noam-carver-logo.svg" />
+    <style>
+      html, body { margin: 0; background: #0b0b0c; color: #e8e6e1; font-family: system-ui, -apple-system, sans-serif; }
+      #app:empty::before { content: "Loading builder…"; display: block; padding: 4rem 1rem; text-align: center; opacity: 0.6; }
+      .nc-fallback { padding: 3rem 1rem; text-align: center; max-width: 32rem; margin: 0 auto; }
+    </style>
+    <script type="module" crossorigin src="/TestViewer/assets/builder-D3EK8_gA.js"></script>
+    <link rel="modulepreload" crossorigin href="/TestViewer/assets/base-Dr4DB6T4.js">
+    <link rel="modulepreload" crossorigin href="/TestViewer/assets/GLTFLoader-Ce58JWOO.js">
+    <link rel="stylesheet" crossorigin href="/TestViewer/assets/base-BegUI-d_.css">
+    <link rel="stylesheet" crossorigin href="/TestViewer/assets/builder-CG__ejS7.css">
+  </head>
+  <body>
+    <!-- The builder mounts here. See src/builder/builderMain.js. -->
+    <div id="app"></div>
+    <noscript>
+      <div class="nc-fallback">
+        <h1>NOAM CARVER</h1>
+        <p>The builder needs JavaScript. Please enable it and reload.</p>
+      </div>
+    </noscript>
+    <script>
+      // Same error detection as in /index.html and /viewer/index.html — catches
+      // the case where Pages serves raw source and the module fails due to
+      // CSS import rejection.
+      (function () {
+        var s = document.getElementById('app-bundle');
+        if (!s) return;
+        s.addEventListener('error', function () {
+          var app = document.getElementById('app');
+          if (app && !app.firstChild) {
+            app.innerHTML =
+              '<div class="nc-fallback">' +
+              '<h1>NOAM CARVER</h1>' +
+              '<p>The builder could not load. Please try refreshing the page.</p>' +
+              '</div>';
+          }
+        });
+      }());
+    </script>
+  </body>
+</html>

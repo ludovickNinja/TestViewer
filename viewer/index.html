@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0b0c" />
+    <meta name="description" content="NOAM CARVER private 3D jewelry preview." />
+    <title>NOAM CARVER · Preview</title>
+    <!-- Logo lives one level up because this page is at /viewer/index.html -->
+    <link rel="icon" type="image/svg+xml" href="../branding/noam-carver-logo.svg" />
+    <style>
+      html, body { margin: 0; background: #0b0b0c; color: #e8e6e1; font-family: system-ui, -apple-system, sans-serif; }
+      #app:empty::before { content: "Loading preview…"; display: block; padding: 4rem 1rem; text-align: center; opacity: 0.6; }
+      .nc-fallback { padding: 3rem 1rem; text-align: center; max-width: 32rem; margin: 0 auto; }
+    </style>
+    <script type="module" crossorigin src="/TestViewer/assets/viewer-CK8cs7BK.js"></script>
+    <link rel="modulepreload" crossorigin href="/TestViewer/assets/base-Dr4DB6T4.js">
+    <link rel="modulepreload" crossorigin href="/TestViewer/assets/GLTFLoader-Ce58JWOO.js">
+    <link rel="modulepreload" crossorigin href="/TestViewer/assets/modelService-Daq0-EtN.js">
+    <link rel="stylesheet" crossorigin href="/TestViewer/assets/base-BegUI-d_.css">
+    <link rel="stylesheet" crossorigin href="/TestViewer/assets/viewer-C7RgHfgd.css">
+  </head>
+  <body>
+    <!-- The 3D viewer mounts here. See src/main.js. -->
+    <div id="app"></div>
+    <noscript>
+      <div class="nc-fallback">
+        <h1>NOAM CARVER</h1>
+        <p>This preview viewer needs JavaScript. Please enable it and reload.</p>
+      </div>
+    </noscript>
+    <script>
+      // Same error detection as in the root index.html — catches the case where
+      // Pages serves raw source and the module fails due to CSS import rejection.
+      (function () {
+        var s = document.getElementById('app-bundle');
+        if (!s) return;
+        s.addEventListener('error', function () {
+          var app = document.getElementById('app');
+          if (app && !app.firstChild) {
+            app.innerHTML =
+              '<div class="nc-fallback">' +
+              '<h1>NOAM CARVER</h1>' +
+              '<p>This preview could not load. Please try refreshing the page, ' +
+              'or contact your jeweler for an updated link.</p>' +
+              '</div>';
+          }
+        });
+      }());
+    </script>
+  </body>
+</html>
