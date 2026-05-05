@@ -33,6 +33,19 @@ const NUMERIC_PROPS = [
   'attenuationDistance'
 ];
 
+// Props whose units are "scene units" (path lengths inside the material).
+// Presets author them as a fraction of the model's bounding-radius, so a
+// preset with `thickness: 0.3` means "30% of the model radius". Callers that
+// know the model's size pass `scale` (= frame.radius) and we multiply on the
+// way in. Without a scale, values pass through unchanged for backwards
+// compatibility.
+const SIZE_SCOPED_PROPS = new Set(['thickness', 'attenuationDistance']);
+
+/** Read-only access for callers that need to mirror the scaling rules. */
+export function isSizeScopedProp(prop) {
+  return SIZE_SCOPED_PROPS.has(prop);
+}
+
 const COLOR_PROPS = ['color', 'attenuationColor', 'sheenColor', 'emissive'];
 
 /**
@@ -42,9 +55,19 @@ const COLOR_PROPS = ['color', 'attenuationColor', 'sheenColor', 'emissive'];
  * @param {Record<string, unknown>} preset - Flat key/value preset object.
  * @param {{ metal?: import('three').Texture | null, gem?: import('three').Texture | null } | null} [environments]
  *   Optional env-map sources. When provided, `preset.envMap` is honoured.
+ * @param {{ scale?: number } | number} [options]
+ *   Either an options object or (for ergonomics) a bare number which is taken
+ *   as `scale`. `scale` multiplies size-scoped props (thickness,
+ *   attenuationDistance) so presets can be authored in model-radius units
+ *   and look right on rings, pendants, and millimetre-scale exports alike.
+ *   Defaults to 1 (no scaling).
  */
-export function applyPreset(material, preset, environments = null) {
+export function applyPreset(material, preset, environments = null, options = 1) {
   if (!material || !preset) return;
+
+  const scale = typeof options === 'number'
+    ? options
+    : Number.isFinite(options?.scale) ? options.scale : 1;
 
   // --- envMap routing (only when the caller provided env-map sources) ---
   if (environments && typeof preset.envMap === 'string') {
@@ -58,7 +81,7 @@ export function applyPreset(material, preset, environments = null) {
     const value = preset[prop];
     if (typeof value !== 'number') continue;
     if (typeof material[prop] !== 'number') continue; // material doesn't expose this
-    material[prop] = value;
+    material[prop] = SIZE_SCOPED_PROPS.has(prop) ? value * scale : value;
   }
 
   // --- Colors (Three.js Color objects support .set(hexString)) ---

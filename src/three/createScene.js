@@ -49,7 +49,11 @@ import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
  *   setSize: (w: number, h: number) => void,
  *   start: () => void,
  *   stop: () => void,
- *   applyMaterialEnvironments: (root: import('three').Object3D) => Promise<void>,
+ *   applyMaterialEnvironments: (
+ *     root: import('three').Object3D,
+ *     overrides?: Record<string, Record<string, unknown>> | null,
+ *     scale?: number
+ *   ) => Promise<void>,
  *   environments: { metal: import('three').Texture | null, gem: import('three').Texture | null },
  *   lights: {
  *     ambient: import('three').AmbientLight,
@@ -281,7 +285,13 @@ export function createScene(container) {
   // src/three/applyPreset.js's COLOR_PROPS.
   const OVERRIDE_COLOR_PROPS = ['color', 'attenuationColor', 'sheenColor', 'emissive'];
 
-  function applyOverrideToMaterial(mat, override) {
+  // Override props authored in model-radius units. Multiplied by `scale`
+  // (= frame.radius) when applied so a sidecar saying `thickness: 0.3` reads
+  // as "0.3 of the model's radius" regardless of the GLB's export scale.
+  // Kept in sync with applyPreset.js's SIZE_SCOPED_PROPS.
+  const OVERRIDE_SIZE_SCOPED_PROPS = new Set(['thickness', 'attenuationDistance']);
+
+  function applyOverrideToMaterial(mat, override, scale = 1) {
     if (!override) return;
     if (override.envMap === 'metal') mat.envMap = environments.metal;
     else if (override.envMap === 'gem') mat.envMap = environments.gem;
@@ -289,7 +299,9 @@ export function createScene(container) {
 
     for (const prop of OVERRIDE_NUMERIC_PROPS) {
       if (typeof override[prop] === 'number' && typeof mat[prop] === 'number') {
-        mat[prop] = override[prop];
+        mat[prop] = OVERRIDE_SIZE_SCOPED_PROPS.has(prop)
+          ? override[prop] * scale
+          : override[prop];
       }
     }
     for (const prop of OVERRIDE_COLOR_PROPS) {
@@ -310,10 +322,15 @@ export function createScene(container) {
    * applied on top of the heuristic so designer-tuned values from the
    * sidecar JSON win over the default classification.
    *
+   * `scale` (typically the model's bounding radius) multiplies size-scoped
+   * override props (thickness, attenuationDistance) so values authored as
+   * fractions of the piece survive a re-export at a different unit scale.
+   *
    * @param {import('three').Object3D} root
    * @param {Record<string, Record<string, unknown>> | null} [overrides]
+   * @param {number} [scale]
    */
-  async function applyMaterialEnvironments(root, overrides = null) {
+  async function applyMaterialEnvironments(root, overrides = null, scale = 1) {
     await envMapsReady;
     if (!environments.metal || !environments.gem) return;
 
@@ -328,7 +345,7 @@ export function createScene(container) {
         mat.needsUpdate = true;
 
         if (overrides && mat.name && overrides[mat.name]) {
-          applyOverrideToMaterial(mat, overrides[mat.name]);
+          applyOverrideToMaterial(mat, overrides[mat.name], scale);
         }
       }
     });
