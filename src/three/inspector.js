@@ -38,7 +38,7 @@ import {
 } from 'three';
 import GUI from 'lil-gui';
 import materialPresets from '../data/materialPresets.json';
-import { applyPreset, findPreset, listPresets } from './applyPreset.js';
+import { applyPreset, findPreset, isSizeScopedProp, listPresets } from './applyPreset.js';
 
 const TONE_MAPPING_PRESETS = {
   None: NoToneMapping,
@@ -98,6 +98,14 @@ export function createInspector(viewer) {
   let selectionFolder = null;
   /** Model id used to name the downloaded overrides file. */
   let modelId = null;
+  /**
+   * Model bounding-radius. Size-scoped material props (thickness,
+   * attenuationDistance) live in scene units, but presets and the override
+   * sidecar express them as fractions of the radius so they're robust to
+   * GLB-export unit differences. We multiply by `modelScale` when applying
+   * and divide when recording so the JSON stays radius-relative.
+   */
+  let modelScale = 1;
   /**
    * Per-material override accumulator, keyed by `material.name`. Populated
    * from the sidecar JSON on attach() and updated whenever the user moves a
@@ -386,13 +394,15 @@ export function createInspector(viewer) {
           if (!id) return;
           const preset = findPreset(materialPresets, id);
           if (!preset) return;
-          applyPreset(mat, preset, viewer.environments);
+          applyPreset(mat, preset, viewer.environments, modelScale);
           // Record every relevant field of the preset into overrides so a
           // download captures the full applied state, not just subsequent
-          // manual tweaks.
+          // manual tweaks. Preset values are already radius-relative, so they
+          // can be stored verbatim — recordOverride() only un-scales values
+          // that come from the live material (post-scale).
           for (const [k, v] of Object.entries(preset)) {
             if (k === 'label' || k.startsWith('$')) continue;
-            recordOverride(mat.name, k, v);
+            recordOverride(mat.name, k, v, { preScaled: true });
           }
           // Bring all material sliders / pickers in this folder back in sync
           // with the freshly-mutated material.
@@ -511,10 +521,21 @@ export function createInspector(viewer) {
     if (selected) renderInfo(selected);
   }
 
-  function recordOverride(matName, prop, value) {
+  function recordOverride(matName, prop, value, { preScaled = false } = {}) {
     if (!matName) return; // unnamed materials can't be addressed by the sidecar
     const current = overrides.get(matName) ?? {};
-    current[prop] = typeof value === 'number' ? +value.toFixed(4) : value;
+    if (typeof value === 'number') {
+      // Slider values come from the live material (already in scene units);
+      // divide by modelScale so size-scoped props are stored radius-relative.
+      // Values flagged `preScaled` (e.g. straight from a preset) skip the
+      // un-scale step because they're already in radius units.
+      const stored = !preScaled && isSizeScopedProp(prop) && modelScale !== 0
+        ? value / modelScale
+        : value;
+      current[prop] = +stored.toFixed(4);
+    } else {
+      current[prop] = value;
+    }
     overrides.set(matName, current);
   }
 
@@ -544,9 +565,11 @@ export function createInspector(viewer) {
     attach(root, opts = {}) {
       modelRoot = root;
       modelId = opts.modelId ?? null;
+      modelScale = Number.isFinite(opts.scale) && opts.scale > 0 ? opts.scale : 1;
       // Seed the overrides map from the sidecar so existing tweaks are
       // included in the next "copy JSON" / "download" without the user having
-      // to re-apply every change.
+      // to re-apply every change. Sidecar values are already radius-relative
+      // (createScene applies them with `scale`), so we store them verbatim.
       if (opts.initialOverrides && typeof opts.initialOverrides === 'object') {
         for (const [name, props] of Object.entries(opts.initialOverrides)) {
           if (props && typeof props === 'object') overrides.set(name, { ...props });

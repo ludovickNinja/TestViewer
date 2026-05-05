@@ -163,13 +163,19 @@ function mount() {
       activeFrame = frame;
       viewer.scene.add(root);
       // Assign the metal vs gem HDR per material, then apply the sidecar
-      // overrides on top. Awaits the env maps internally if they haven't
-      // finished loading yet.
-      void viewer.applyMaterialEnvironments(root, overrides);
+      // overrides on top. Size-scoped props in overrides (thickness,
+      // attenuationDistance) are scaled by the model's bounding radius so
+      // they don't go saturated/uniform on millimetre-scale exports or
+      // diluted on metre-scale ones.
+      void viewer.applyMaterialEnvironments(root, overrides, frame.radius);
       fitCameraToObject(viewer.camera, viewer.controls, frame);
       thumbStrip.setActive(DEFAULT_VIEW);
       loading.hide();
-      inspector?.attach(root, { modelId: id, initialOverrides: overrides });
+      inspector?.attach(root, {
+        modelId: id,
+        initialOverrides: overrides,
+        scale: frame.radius
+      });
     })
     .catch((err) => {
       // Log details for us, but show only a friendly message to the customer.
