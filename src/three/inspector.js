@@ -56,7 +56,7 @@ const MATERIAL_NUMERIC_PROPS = [
   ['roughness', 0, 1, 0.01],
   ['transmission', 0, 1, 0.01],
   ['thickness', 0, 5, 0.01],
-  ['ior', 1, 2.333, 0.001],
+  ['ior', 1, 2.7, 0.001],
   ['dispersion', 0, 2, 0.01],
   ['clearcoat', 0, 1, 0.01],
   ['clearcoatRoughness', 0, 1, 0.01],
@@ -580,10 +580,15 @@ export function createInspector(viewer) {
   }
 
   // Keep the BoxHelper in sync if the model animates / camera moves.
+  // The viewer renders on-demand in production, but with the inspector open
+  // we want material slider tweaks to show up immediately without forcing
+  // every onChange handler to call viewer.requestRender(). So we kick a
+  // render every frame while debug is active.
   let raf = 0;
   function tick() {
     raf = requestAnimationFrame(tick);
     if (boxHelper) boxHelper.update();
+    viewer.requestRender?.();
   }
   tick();
 
