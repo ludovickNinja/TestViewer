@@ -25,6 +25,7 @@ import {
   DirectionalLight,
   EquirectangularReflectionMapping,
   HemisphereLight,
+  LinearFilter,
   PCFSoftShadowMap,
   PerspectiveCamera,
   PMREMGenerator,
@@ -35,6 +36,27 @@ import {
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
+import { createDiamondMaterial, shouldUseDiamondShader } from './diamondShaderMaterial.js';
+
+// Mobile detection drives a few perf tradeoffs (lower pixel ratio cap, lower
+// transmission render target resolution, halved dispersion). We treat every
+// touch-primary device as "mobile" — iPhone, iPad, Android, plus iPadOS which
+// reports as Mac in UA but exposes touch points.
+function detectMobile() {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  if (/iPhone|iPod|Android|Mobile/i.test(ua)) return true;
+  // iPadOS 13+ masquerades as Mac. Differentiate by touch support.
+  if (/iPad/.test(ua)) return true;
+  if (
+    navigator.platform === 'MacIntel' &&
+    typeof navigator.maxTouchPoints === 'number' &&
+    navigator.maxTouchPoints > 1
+  ) {
+    return true;
+  }
+  return false;
+}
 
 /**
  * Create a Three.js scene mounted inside `container`.
@@ -69,6 +91,8 @@ export function createScene(container) {
   // SCENE CONFIGURATION — Adjust these to customize appearance & behavior
   // ============================================================================
 
+  const isMobile = detectMobile();
+
   const SCENE_CONFIG = {
     backgroundColor: '#f4f4f5',    // Super light grey, almost white
   };
@@ -80,9 +104,20 @@ export function createScene(container) {
     farPlane: 100,                 // Objects farther than this won't render
   };
 
+  // Lower exposure than before (was 2.4) so highlight separation in the gem
+  // HDR survives tonemapping. Diamond "fire" depends on near-clipped pinpoint
+  // highlights against dark facets — a high exposure crushes that contrast.
+  // EnvMapIntensity on the gem material is bumped to compensate.
   const RENDERER_CONFIG = {
-    toneMappingExposure: 2.4,      // Overall brightness (higher = brighter)
-    pixelRatioCap: 2,              // Max device pixel ratio (1-2 recommended)
+    toneMappingExposure: 1.5,
+    // iPhones/iPads commonly report DPR 3, which makes the transmission pass
+    // (which renders at full canvas resolution) ~9× as expensive as it
+    // appears. Cap aggressively on mobile.
+    pixelRatioCap: isMobile ? 1.5 : 2,
+    // Three r170+: scales the resolution of the internal transmission
+    // render target. Halving on mobile is essentially invisible because the
+    // result is blurred by roughness/thickness anyway.
+    transmissionResolutionScale: isMobile ? 0.5 : 1.0,
   };
 
   // Multiplier on scene.environment's contribution to all PBR materials.
@@ -90,12 +125,17 @@ export function createScene(container) {
   // want to brighten indirect light without re-exporting the map.
   const SCENE_ENV_INTENSITY = 1.0;
 
+  // Direct lights are dimmed on top of the HDR — diamonds depend on the
+  // contrast between black facets and bright pinpoint highlights, and ambient
+  // / fill light fills in the blacks and washes out the sparkle. The HDR
+  // delivers most of the lighting; these directional lights only exist to
+  // give the metal a key-light direction and the gem a sparkle source.
   const LIGHTING_CONFIG = {
-    ambientIntensity: 0.8,         // Uniform light preventing pitch-black shadows
-    hemisphereIntensity: 0.7,      // Sky light (above) + ground light (below)
-    keyLightIntensity: 4.0,        // Primary bright light (up-right)
-    fillLightIntensity: 2.5,       // Secondary soft light (opposite side)
-    rimLightIntensity: 2.5,        // Back warm light for edge glow
+    ambientIntensity: 0.15,
+    hemisphereIntensity: 0.2,
+    keyLightIntensity: 2.0,
+    fillLightIntensity: 0.8,
+    rimLightIntensity: 1.0,
   };
 
   const LIGHT_POSITIONS = {
@@ -125,7 +165,9 @@ export function createScene(container) {
     },
     gem: {
       path: '/env_gem_001.exr',    // Contrasty EXR for gem fire/sparkle
-      intensity: 2.0,              // Gems usually want a brighter env
+      // Bumped from 2.0 because exposure was lowered from 2.4 -> 1.5; the
+      // gem now depends more on its envMap than on the global tonemap.
+      intensity: 2.6,
     },
   };
 
@@ -156,6 +198,11 @@ export function createScene(container) {
   renderer.toneMappingExposure = RENDERER_CONFIG.toneMappingExposure;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = PCFSoftShadowMap;
+  // Three r170+: scales the internal transmission render target. Older
+  // versions silently ignore the property, so the assignment is safe.
+  if ('transmissionResolutionScale' in renderer) {
+    renderer.transmissionResolutionScale = RENDERER_CONFIG.transmissionResolutionScale;
+  }
 
   const canvas = renderer.domElement;
   canvas.classList.add('viewer-canvas');
@@ -191,7 +238,13 @@ export function createScene(container) {
   // ----- HDR environments -----
   // Both HDRs are equirectangular. We pre-filter them with PMREMGenerator so
   // they can be sampled by PBR materials at any roughness without ringing.
+  // For the gem map we ALSO keep the raw equirect float texture around — the
+  // diamond shader samples it directly with refracted ray directions, which
+  // needs sharp (un-prefiltered) data.
   const environments = { metal: null, gem: null };
+  // Raw equirect textures, fed to the custom diamond shader. Mirrors
+  // `environments` keys for symmetry.
+  const equirectEnvironments = { metal: null, gem: null };
   let envMapsReady;
 
   if (HDRI_CONFIG.enabled) {
@@ -208,14 +261,24 @@ export function createScene(container) {
       return rgbeLoader;
     };
 
-    const loadEnv = (path) => new Promise((resolve, reject) => {
+    const loadEnv = (path, { keepEquirect = false } = {}) => new Promise((resolve, reject) => {
       loaderFor(path).load(
         path,
         (texture) => {
           texture.mapping = EquirectangularReflectionMapping;
           const prefiltered = pmrem.fromEquirectangular(texture).texture;
-          texture.dispose();
-          resolve(prefiltered);
+          if (keepEquirect) {
+            // Diamond shader wants sharp linear sampling, no mips. The texture
+            // is already linear-float from the HDR/EXR loader.
+            texture.minFilter = LinearFilter;
+            texture.magFilter = LinearFilter;
+            texture.generateMipmaps = false;
+            texture.needsUpdate = true;
+            resolve({ prefiltered, equirect: texture });
+          } else {
+            texture.dispose();
+            resolve({ prefiltered, equirect: null });
+          }
         },
         undefined,
         reject
@@ -224,15 +287,17 @@ export function createScene(container) {
 
     envMapsReady = Promise.all([
       loadEnv(HDRI_CONFIG.metal.path),
-      loadEnv(HDRI_CONFIG.gem.path)
+      loadEnv(HDRI_CONFIG.gem.path, { keepEquirect: true })
     ])
-      .then(([metalEnv, gemEnv]) => {
-        environments.metal = metalEnv;
-        environments.gem = gemEnv;
+      .then(([metalRes, gemRes]) => {
+        environments.metal = metalRes.prefiltered;
+        environments.gem = gemRes.prefiltered;
+        equirectEnvironments.gem = gemRes.equirect;
         // Default scene environment to the metal map so anything we don't
         // classify still gets sensible reflections out of the box.
-        scene.environment = metalEnv;
+        scene.environment = metalRes.prefiltered;
         pmrem.dispose();
+        requestRender();
       })
       .catch((err) => {
         console.error('[viewer] failed to load HDR environments', err);
@@ -314,6 +379,35 @@ export function createScene(container) {
   }
 
   /**
+   * Replace a material on a mesh with our custom diamond shader, preserving
+   * the original's name and color so the inspector + override sidecar still
+   * address it the same way.
+   *
+   * @param {import('three').Mesh} mesh
+   * @param {import('three').Material} oldMat
+   * @param {number} matIndex - Index in mesh.material if it's an array
+   * @returns {import('three').ShaderMaterial}
+   */
+  function swapToDiamondShader(mesh, oldMat, matIndex) {
+    const diamondMat = createDiamondMaterial({
+      name: oldMat.name || 'Diamond',
+      color: oldMat.color ? oldMat.color.getHex() : 0xffffff,
+      ior: typeof oldMat.ior === 'number' ? oldMat.ior : 2.417,
+      dispersion: typeof oldMat.dispersion === 'number' ? oldMat.dispersion : 0.8,
+      envMap: equirectEnvironments.gem,
+      envMapIntensity: HDRI_CONFIG.gem.intensity
+    });
+    if (Array.isArray(mesh.material)) {
+      mesh.material[matIndex] = diamondMat;
+    } else {
+      mesh.material = diamondMat;
+    }
+    // Free the old material's GPU resources — we're not coming back to it.
+    oldMat.dispose?.();
+    return diamondMat;
+  }
+
+  /**
    * Walk a loaded model and assign the appropriate envMap + envMapIntensity
    * to every material based on whether it looks like metal or a gem. Safe to
    * call before HDRs finish loading — it awaits internally.
@@ -321,6 +415,12 @@ export function createScene(container) {
    * If an `overrides` object (keyed by material name) is provided, it's
    * applied on top of the heuristic so designer-tuned values from the
    * sidecar JSON win over the default classification.
+   *
+   * Materials that look like diamond / moissanite are swapped for a custom
+   * `DiamondShaderMaterial` that samples the raw gem HDR directly with
+   * refracted view rays — much faster on iPhone than the per-frame
+   * transmission render pass MeshPhysicalMaterial would otherwise trigger,
+   * and gives a more dramatic "fire" look.
    *
    * `scale` (typically the model's bounding radius) multiplies size-scoped
    * override props (thickness, attenuationDistance) so values authored as
@@ -337,18 +437,36 @@ export function createScene(container) {
     root.traverse((obj) => {
       if (!obj.isMesh) return;
       const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-      for (const mat of mats) {
+      for (let i = 0; i < mats.length; i++) {
+        let mat = mats[i];
         if (!mat) continue;
+
+        const matOverride = overrides && mat.name ? overrides[mat.name] : null;
+
+        // Diamond / moissanite path: replace the material with our custom
+        // shader before applying overrides. Skip when there's no equirect
+        // gem map to feed it (e.g. HDR loading failed).
+        if (
+          equirectEnvironments.gem &&
+          shouldUseDiamondShader(mat, matOverride)
+        ) {
+          mat = swapToDiamondShader(obj, mat, i);
+          mats[i] = mat;
+          if (matOverride) applyOverrideToMaterial(mat, matOverride, scale);
+          continue;
+        }
+
         const gem = isGemMaterial(mat);
         mat.envMap = gem ? environments.gem : environments.metal;
         mat.envMapIntensity = gem ? HDRI_CONFIG.gem.intensity : HDRI_CONFIG.metal.intensity;
         mat.needsUpdate = true;
 
-        if (overrides && mat.name && overrides[mat.name]) {
-          applyOverrideToMaterial(mat, overrides[mat.name], scale);
+        if (matOverride) {
+          applyOverrideToMaterial(mat, matOverride, scale);
         }
       }
     });
+    requestRender();
   }
 
   // Configure user interaction
@@ -368,30 +486,58 @@ export function createScene(container) {
     renderer.setSize(width, height, false);
     camera.aspect = width / Math.max(height, 1);
     camera.updateProjectionMatrix();
+    requestRender();
   }
 
   // ------- Render loop -------
-  // requestAnimationFrame fires roughly 60 times per second. We update the
-  // controls (for damping / auto-rotate) and re-render the scene each tick.
-  let raf = 0;
+  // Render-on-demand instead of fixed 60Hz. On iPhone, drawing every frame
+  // even when nothing has changed drains battery and causes thermal throttling
+  // that hurts framerate during actual interaction.
+  //
+  // We schedule a render whenever:
+  //   - the user drags/zooms (OrbitControls 'change')
+  //   - the canvas resizes
+  //   - the model loads or materials change
+  //   - auto-rotate is on (we draw a continuous loop while it's active)
+  //
+  // Damping is handled by polling controls.update(): if it returns true the
+  // controls are still settling and we keep drawing for one more frame.
+
+  let pending = false;
   let running = false;
 
-  function tick() {
-    raf = requestAnimationFrame(tick);
-    controls.update();
+  function drawFrame() {
+    pending = false;
+    if (!running) return;
+    // controls.update() returns true while damping or auto-rotating is still
+    // mutating the camera. As long as that's true we keep redrawing; once it
+    // returns false the next frame settles and the loop falls idle.
+    const stillAnimating = controls.update();
     renderer.render(scene, camera);
+    if (stillAnimating || controls.autoRotate) requestRender();
   }
+
+  function requestRender() {
+    if (!running || pending) return;
+    pending = true;
+    requestAnimationFrame(drawFrame);
+  }
+
+  // Any user interaction with OrbitControls (drag, zoom, pan) fires 'change'.
+  // That, plus explicit requestRender() calls from callers that mutate the
+  // scene, is enough to keep the canvas correct without a permanent rAF loop.
+  controls.addEventListener('change', requestRender);
 
   function start() {
     if (running) return;
     running = true;
-    tick();
+    requestRender();
   }
 
   function stop() {
     if (!running) return;
     running = false;
-    cancelAnimationFrame(raf);
+    pending = false;
   }
 
   return {
@@ -403,8 +549,11 @@ export function createScene(container) {
     setSize,
     start,
     stop,
+    requestRender,
     applyMaterialEnvironments,
     environments,
-    lights
+    equirectEnvironments,
+    lights,
+    isMobile
   };
 }

@@ -84,6 +84,10 @@ function mount() {
     onToggleAutoRotate: (enabled) => {
       // OrbitControls has built-in auto-rotate; we just toggle the flag.
       viewer.controls.autoRotate = enabled;
+      // Render loop is on-demand; kick a frame so the rotation actually
+      // starts. Once running, drawFrame's `controls.autoRotate` check keeps
+      // it pumping until the flag flips back to false.
+      if (enabled) viewer.requestRender();
     },
     onResetView: () => {
       void goToView(DEFAULT_VIEW);

@@ -56,6 +56,11 @@ export function disposeScene(viewer) {
   // above doesn't reliably free them. Dispose them explicitly.
   viewer.environments?.metal?.dispose();
   viewer.environments?.gem?.dispose();
+  // The raw equirect gem texture is kept around to feed the diamond shader;
+  // free it explicitly. Other equirect slots (currently just the metal one,
+  // which is null) are no-ops.
+  viewer.equirectEnvironments?.metal?.dispose();
+  viewer.equirectEnvironments?.gem?.dispose();
   viewer.controls.dispose();
   viewer.renderer.dispose();
   if (viewer.canvas.parentElement) {
