@@ -76,6 +76,11 @@ export function applyPreset(material, preset, environments = null, options = 1) 
     else if (preset.envMap === 'none') material.envMap = null;
   }
 
+  // The `shader` and `matcap` preset fields don't get applied here — they
+  // require a material class swap (MeshPhysicalMaterial -> ShaderMaterial)
+  // which is the viewer's job. The inspector calls reapplyMeshMaterial()
+  // after applyPreset() to handle that path.
+
   // --- Numeric scalars (only set when the material actually has the slot) ---
   for (const prop of NUMERIC_PROPS) {
     const value = preset[prop];

@@ -438,10 +438,27 @@ export function createInspector(viewer) {
             if (k === 'label' || k.startsWith('$')) continue;
             recordOverride(mat.name, k, v, { preScaled: true });
           }
-          // Bring all material sliders / pickers in this folder back in sync
-          // with the freshly-mutated material.
-          m.controllersRecursive().forEach((c) => c.updateDisplay());
-          renderInfo(mesh);
+
+          // If the preset would swap the material class (e.g. matcap or
+          // refraction-shader diamond), applyPreset alone can't do it — it
+          // only mutates existing properties. Ask the viewer to re-process
+          // this mesh against the updated overrides; that's the same code
+          // path the initial model walk uses.
+          if (
+            (preset.shader || preset.matcap) &&
+            typeof viewer.reapplyMeshMaterial === 'function'
+          ) {
+            void viewer.reapplyMeshMaterial(mesh, overridesAsObject(), modelScale);
+            // Material may have been replaced — rebuild the selection GUI
+            // against the new material instance so sliders bind correctly.
+            buildSelectionGui(mesh);
+            select(mesh);
+          } else {
+            // Bring all material sliders / pickers in this folder back in
+            // sync with the freshly-mutated material.
+            m.controllersRecursive().forEach((c) => c.updateDisplay());
+            renderInfo(mesh);
+          }
           // Park the dropdown back at "(none)" so the next apply re-fires
           // even if the user picks the same preset again.
           presetProxy.preset = '';

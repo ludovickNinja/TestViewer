@@ -378,19 +378,28 @@ function writableNumber(initial) {
 
 /**
  * Heuristic: should this material be replaced with the diamond shader?
- * We look for very high IOR + transmissive + low metalness, or an explicit
- * name like "Diamond" / "Moissanite". Sapphires/rubies/emeralds have IOR
- * 1.5–1.8 and benefit from MeshPhysicalMaterial's attenuation, so they
- * stay on the physical material path.
+ * We look for very high IOR + transmissive + low metalness, an explicit
+ * material name like "Diamond" / "Moissanite", or a host mesh whose name
+ * matches (the GLB exporter often gives the material a generic name like
+ * "Material.001" while the mesh keeps the artist's "Diamond_Round" label).
+ * Sapphires/rubies/emeralds have IOR 1.5–1.8 and benefit from
+ * MeshPhysicalMaterial's attenuation, so they stay on the physical path.
  *
  * @param {import('three').Material} mat
- * @param {{ ior?: number, name?: string } | null} [override]
+ * @param {{ ior?: number, name?: string, shader?: string } | null} [override]
+ * @param {import('three').Mesh | null} [mesh]
  */
-export function shouldUseDiamondShader(mat, override = null) {
+export function shouldUseDiamondShader(mat, override = null, mesh = null) {
   if (!mat) return false;
   if (mat.userData?.isDiamondShaderMaterial) return true;
-  const name = (mat.name || '').toLowerCase();
-  if (/diamond|moissanite/.test(name)) return true;
+  // Explicit opt-in via override sidecar / preset wins over heuristics.
+  if (override?.shader === 'diamond') return true;
+  if (override?.shader && override.shader !== 'diamond') return false;
+
+  const matName = (mat.name || '').toLowerCase();
+  const meshName = (mesh?.name || '').toLowerCase();
+  if (/diamond|moissanite/.test(matName) || /diamond|moissanite/.test(meshName)) return true;
+
   const overrideIor = typeof override?.ior === 'number' ? override.ior : null;
   const ior = overrideIor ?? (typeof mat.ior === 'number' ? mat.ior : 0);
   const transmission = typeof mat.transmission === 'number' ? mat.transmission : 0;
