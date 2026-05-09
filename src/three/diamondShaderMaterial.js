@@ -23,7 +23,7 @@
 // by N8Programs). Ported here as vanilla Three.js so we can:
 //   - integrate with our preset / override sidecar architecture
 //   - apply iJewel-derived parameter defaults (IOR 2.6, dispersion 0.01,
-//     bounces 5, fresnel 0.5)
+//     bounces 3, fresnel 0.5)
 //   - run on iPhone with WebGL2 (which iOS 15+ supports)
 //
 // Property surface is intentionally aliased to the MeshPhysicalMaterial knobs
@@ -260,7 +260,7 @@ export function createDiamondMaterial(opts = {}) {
   const uniforms = {
     envMap: { value: opts.envMap ?? null },
     bvh: { value: bvhUniform },
-    bounces: { value: typeof opts.bounces === 'number' ? opts.bounces : 5 },
+    bounces: { value: typeof opts.bounces === 'number' ? opts.bounces : 3 },
     ior: { value: typeof opts.ior === 'number' ? opts.ior : 2.6 },
     aberrationStrength: { value: typeof opts.dispersion === 'number' ? opts.dispersion : 0.01 },
     fresnel: { value: typeof opts.fresnel === 'number' ? opts.fresnel : 0.5 },
