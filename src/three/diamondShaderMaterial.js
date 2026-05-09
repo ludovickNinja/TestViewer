@@ -86,6 +86,17 @@ const FRAGMENT_SHADER = /* glsl */ `
 precision highp isampler2D;
 precision highp usampler2D;
 
+// Under glslVersion: GLSL3, three.js does NOT auto-inject the gl_FragColor →
+// pc_fragColor compat shim it uses for GLSL ES 1.00 ShaderMaterials (see
+// three's WebGLProgram.js, where the layout(location=0) out + #define are
+// gated on glslVersion !== GLSL3). Three's auto-injected
+// <tonemapping_fragment> / <colorspace_fragment> application chunks still
+// emit "gl_FragColor.rgb = toneMapping( gl_FragColor.rgb );" etc., so we
+// declare the out var ourselves and re-establish the macro so both the
+// chunks and our own gl_FragColor writes resolve to the same target.
+out highp vec4 pc_fragColor;
+#define gl_FragColor pc_fragColor
+
 varying vec3 vWorldPosition;
 varying vec3 vNormal;
 varying mat4 vModelMatrixInverse;
@@ -106,15 +117,14 @@ uniform vec3 tintColor;
 uniform float opacity;
 uniform float envMapIntensity;
 
-// The matching <tonemapping_fragment> / <colorspace_fragment> chunks at the
-// bottom of main() expand to calls into toneMapping() / linearToOutputTexel(),
-// so the *_pars_* chunks that declare those helpers must be included here.
-// three.js does NOT auto-inject these into ShaderMaterial's prefix (only into
-// built-in materials' assembled shaders), so without these the shader fails
-// to compile.
+// Do NOT #include <tonemapping_pars_fragment> or <colorspace_pars_fragment>
+// here. three.js's WebGLProgram already injects both into the fragment
+// prefix for non-raw ShaderMaterials (see three.module.js where
+// ShaderChunk[ 'tonemapping_pars_fragment' ] and
+// ShaderChunk[ 'colorspace_pars_fragment' ] are pushed into prefixFragment).
+// Re-including them redeclares toneMappingExposure and the helper functions,
+// which fails to compile under GLSL ES 3.00.
 #include <common>
-#include <tonemapping_pars_fragment>
-#include <colorspace_pars_fragment>
 
 const float TWO_PI = 6.28318530718;
 const float ONE_OVER_PI = 0.31830988618;
