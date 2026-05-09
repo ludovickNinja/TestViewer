@@ -36,6 +36,7 @@
 import {
   Color,
   EquirectangularReflectionMapping,
+  GLSL3,
   Matrix4,
   ShaderMaterial,
   Vector2
@@ -264,6 +265,15 @@ export function createDiamondMaterial(opts = {}) {
     uniforms,
     vertexShader: VERTEX_SHADER,
     fragmentShader: FRAGMENT_SHADER,
+    // The shader uses GLSL ES 3.00 features that don't exist in 1.00:
+    //   - usampler2D / uvec4 / texelFetch (from three-mesh-bvh's BVH traversal)
+    //   - textureGrad (sampleEnvSmooth)
+    //   - precision qualifiers for isampler2D / usampler2D
+    // Without GLSL3 here, three.js wraps the source as GLSL 1.00 and the
+    // fragment shader fails to compile ("Fragment shader is not compiled").
+    // GLSL3 mode also installs three's compat macros (varying → in/out,
+    // gl_FragColor → pc_fragColor) so the existing source keeps working.
+    glslVersion: GLSL3,
     transparent: false,
     depthWrite: true,
     depthTest: true
