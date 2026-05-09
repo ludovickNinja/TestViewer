@@ -1,29 +1,30 @@
 // ----------------------------------------------------------------------------
-// diamondShaderMaterial.js — custom GLSL material for diamond / moissanite
+// diamondShaderMaterial.js — BVH-based multi-bounce ray-traced diamond
 // ----------------------------------------------------------------------------
-// MeshPhysicalMaterial.transmission re-renders the entire scene every frame
-// into a separate render target so the diamond's shader can sample what's
-// "behind" it. On iPhone with DPR 3 and dispersion enabled (3 RGB samples),
-// that pass is the single biggest performance cost in the viewer.
+// Earlier versions of this file did "single-refract + env-map sample" which
+// gave a glassy look but missed the deep internal "fire" of a real diamond.
+// This rewrite traces actual rays through the diamond mesh's geometry,
+// bouncing up to N times against a BVH (bounding volume hierarchy) baked
+// from the mesh, before sampling the gem HDR with the exit direction.
 //
-// For diamonds specifically we don't actually need to see real geometry
-// behind the stone — the convincing look comes from sampling a contrasty
-// HDR environment with refracted ray directions. So this material skips
-// the transmission pass entirely and samples the gem HDR directly using
-// Snell's law in the fragment shader.
+// Per fragment:
+//   1. Refract the camera ray through the front facet using Snell's law.
+//   2. Walk the BVH up to `bounces` times — at each step, take the first
+//      facet hit. If we can refract out, take that direction and stop.
+//      Otherwise reflect (total internal reflection) and continue.
+//   3. Three-tap chromatic aberration: do steps 1+2 three times with three
+//      slightly different IORs (one per RGB channel) so wavelength
+//      separation produces the rainbow "fire".
+//   4. Sample the equirectangular gem HDR at the final exit direction
+//      using textureGrad with a screen-smooth derivative pair so we don't
+//      get mipmap noise from chaotic ray directions.
 //
-// What this material does, per fragment:
-//   1. Refract the view ray through the front facet using Snell's law.
-//   2. Optionally take a second refraction off a synthetic back facet so the
-//      ray exits at a different angle (this is what creates the deep "fire"
-//      look — single-bounce alone tends to look like glass, not diamond).
-//   3. Sample the equirect gem HDR three times (R/G/B) at slightly different
-//      IORs for chromatic aberration / dispersion.
-//   4. Sample the same HDR with the reflection vector for the mirror lobe.
-//   5. Mix refraction + reflection via a Schlick Fresnel term — edges become
-//      mostly reflective, the centre mostly refractive.
-//   6. Add a tight specular highlight per directional light so pinpoint
-//      light sources still produce on-camera sparkle.
+// This is the same approach drei's MeshRefractionMaterial uses (originally
+// by N8Programs). Ported here as vanilla Three.js so we can:
+//   - integrate with our preset / override sidecar architecture
+//   - apply iJewel-derived parameter defaults (IOR 2.6, dispersion 0.01,
+//     bounces 5, fresnel 0.5)
+//   - run on iPhone with WebGL2 (which iOS 15+ supports)
 //
 // Property surface is intentionally aliased to the MeshPhysicalMaterial knobs
 // the rest of the codebase already speaks (color, ior, dispersion, roughness,
@@ -35,132 +36,148 @@
 import {
   Color,
   EquirectangularReflectionMapping,
+  Matrix4,
   ShaderMaterial,
-  UniformsUtils,
-  Vector3
+  Vector2
 } from 'three';
+import {
+  MeshBVH,
+  MeshBVHUniformStruct,
+  shaderStructs,
+  shaderIntersectFunction
+} from 'three-mesh-bvh';
 
 const VERTEX_SHADER = /* glsl */ `
+uniform mat4 viewMatrixInverse;
+
 varying vec3 vWorldPosition;
-varying vec3 vWorldNormal;
+varying vec3 vNormal;
+varying mat4 vModelMatrixInverse;
 
 void main() {
+  vModelMatrixInverse = inverse(modelMatrix);
   vec4 worldPos = modelMatrix * vec4(position, 1.0);
   vWorldPosition = worldPos.xyz;
-  // Use the inverse-transpose for non-uniform scales. modelMatrix's upper-3x3
-  // is fine for uniform scales which is the common case for jewelry GLBs.
-  vWorldNormal = normalize(mat3(modelMatrix) * normal);
+  vNormal = normalize((viewMatrixInverse * vec4(normalMatrix * normal, 0.0)).xyz);
   gl_Position = projectionMatrix * viewMatrix * worldPos;
 }
 `;
 
 const FRAGMENT_SHADER = /* glsl */ `
+precision highp isampler2D;
+precision highp usampler2D;
+
+varying vec3 vWorldPosition;
+varying vec3 vNormal;
+varying mat4 vModelMatrixInverse;
+
+uniform sampler2D envMap;
+uniform float bounces;
+${shaderStructs}
+${shaderIntersectFunction}
+uniform BVH bvh;
+uniform float ior;
+uniform vec2 resolution;
+uniform mat4 modelMatrix;
+uniform mat4 projectionMatrixInverse;
+uniform mat4 viewMatrixInverse;
+uniform float aberrationStrength;
+uniform float fresnel;
+uniform vec3 tintColor;
+uniform float opacity;
+uniform float envMapIntensity;
+
 #include <common>
 #include <tonemapping_pars_fragment>
 #include <colorspace_pars_fragment>
-
-uniform sampler2D envMap;
-uniform vec3 cameraPos;
-uniform vec3 tintColor;
-uniform float ior;
-uniform float dispersion;
-uniform float envMapIntensity;
-uniform float fresnelPower;
-uniform float secondaryBounce;
-uniform float sparkleStrength;
-
-#define MAX_LIGHTS 4
-uniform int numLights;
-uniform vec3 lightDirs[MAX_LIGHTS];
-uniform vec3 lightColors[MAX_LIGHTS];
-
-varying vec3 vWorldPosition;
-varying vec3 vWorldNormal;
 
 const float TWO_PI = 6.28318530718;
 const float ONE_OVER_PI = 0.31830988618;
 
 vec2 equirectUv(vec3 dir) {
-  // Standard equirect mapping: longitude across U, latitude across V.
-  // Three.js's equirect convention puts (u=0.5, v=0.5) at +Z forward.
   vec3 d = normalize(dir);
   float u = atan(d.z, d.x) / TWO_PI + 0.5;
   float v = asin(clamp(d.y, -1.0, 1.0)) * ONE_OVER_PI + 0.5;
   return vec2(u, v);
 }
 
-vec3 sampleEnv(vec3 dir) {
-  return texture2D(envMap, equirectUv(dir)).rgb;
+float fresnelFunc(vec3 viewDirection, vec3 worldNormal) {
+  return pow(1.0 + dot(viewDirection, worldNormal), 10.0);
 }
 
-// Sample the env map for a refracted ray, optionally taking a second bounce
-// off a virtual back facet so the exit direction differs from the entry
-// direction. eta = n_outside / n_inside.
-vec3 refractedSample(vec3 incident, vec3 N, float eta) {
-  vec3 r1 = refract(incident, N, eta);
-  // Total internal reflection — refract returns vec3(0).
-  if (dot(r1, r1) < 1e-6) {
-    return sampleEnv(reflect(incident, N));
-  }
-  if (secondaryBounce > 0.0) {
-    // Approximate the back facet as the opposite normal jittered by the
-    // refracted direction. This is not physically exact but produces the
-    // multi-direction exit that gives diamonds their depth.
-    vec3 backNormal = normalize(-N + r1 * 0.35);
-    vec3 r2 = refract(r1, backNormal, 1.0 / eta);
-    if (dot(r2, r2) < 1e-6) {
-      // TIR at the back facet — bounce off it instead.
-      r2 = reflect(r1, backNormal);
+// Trace a ray through the diamond, refracting through the front facet
+// and then bouncing inside the mesh up to (bounces) uniform times.
+// Returns the final exit direction in world space.
+vec3 totalInternalReflection(vec3 ro, vec3 rd, vec3 normal, float etaIor, mat4 modelMatrixInverse) {
+  vec3 rayOrigin = ro;
+  vec3 rayDirection = rd;
+  rayDirection = refract(rayDirection, normal, 1.0 / etaIor);
+  rayOrigin = vWorldPosition + rayDirection * 0.001;
+  // Move into local space — the BVH was built from the geometry's local
+  // positions, so rays must traverse it in the same frame.
+  rayOrigin = (modelMatrixInverse * vec4(rayOrigin, 1.0)).xyz;
+  rayDirection = normalize((modelMatrixInverse * vec4(rayDirection, 0.0)).xyz);
+  for (float i = 0.0; i < bounces; i++) {
+    uvec4 faceIndices = uvec4(0u);
+    vec3 faceNormal = vec3(0.0, 0.0, 1.0);
+    vec3 barycoord = vec3(0.0);
+    float side = 1.0;
+    float dist = 0.0;
+    bvhIntersectFirstHit(bvh, rayOrigin, rayDirection, faceIndices, faceNormal, barycoord, side, dist);
+    vec3 hitPos = rayOrigin + rayDirection * max(dist - 0.001, 0.0);
+    vec3 tempDir = refract(rayDirection, faceNormal, etaIor);
+    if (length(tempDir) != 0.0) {
+      // Successful refraction out of the diamond — stop bouncing.
+      rayDirection = tempDir;
+      break;
     }
-    vec3 exitDir = mix(r1, r2, secondaryBounce);
-    return sampleEnv(exitDir);
+    // Total internal reflection — bounce off the back facet and continue.
+    rayDirection = reflect(rayDirection, faceNormal);
+    rayOrigin = hitPos + rayDirection * 0.01;
   }
-  return sampleEnv(r1);
+  // Back to world space for the env-map sample.
+  rayDirection = normalize((modelMatrix * vec4(rayDirection, 0.0)).xyz);
+  return rayDirection;
+}
+
+// Sample the equirect env map with derivatives taken from a smooth
+// screen-space direction (correctMips trick) so that adjacent fragments,
+// whose chaotic ray directions differ wildly, don't bias the mipmap
+// selection toward the highest blur level.
+vec4 sampleEnvSmooth(vec3 dir, vec3 smoothDir) {
+  vec2 uvCoord = equirectUv(dir);
+  vec2 smoothUv = equirectUv(smoothDir);
+  return textureGrad(envMap, uvCoord, dFdx(smoothUv), dFdy(smoothUv));
 }
 
 void main() {
-  vec3 N = normalize(vWorldNormal);
-  vec3 V = normalize(cameraPos - vWorldPosition);
-  vec3 I = -V;
+  vec2 uv = gl_FragCoord.xy / resolution;
+  vec3 directionCamPerfect = (projectionMatrixInverse * vec4(uv * 2.0 - 1.0, 0.0, 1.0)).xyz;
+  directionCamPerfect = (viewMatrixInverse * vec4(directionCamPerfect, 0.0)).xyz;
+  directionCamPerfect = normalize(directionCamPerfect);
+  vec3 normal = vNormal;
+  vec3 rayOrigin = cameraPosition;
+  vec3 rayDirection = normalize(vWorldPosition - cameraPosition);
 
-  // Reflection lobe.
-  vec3 R = reflect(I, N);
-  vec3 reflColor = sampleEnv(R);
+  vec4 diffuseColor = vec4(tintColor, opacity);
 
-  // Refraction lobe with chromatic aberration. Real diamond dispersion is
-  // ~0.044 between red and violet IORs; we expose dispersion as a 0-2
-  // designer dial multiplied by that physical baseline.
-  float disp = dispersion * 0.044;
-  float iorR = ior - disp * 0.5;
-  float iorG = ior;
-  float iorB = ior + disp * 0.5;
+  // Three full ray paths, one per RGB channel, at slightly different IORs.
+  // This is more expensive than fast-chroma (offset only the final dir)
+  // but produces correct dispersion at every internal facet hit.
+  vec3 rayDirectionG = totalInternalReflection(rayOrigin, rayDirection, normal, max(ior, 1.0), vModelMatrixInverse);
+  vec3 rayDirectionR = totalInternalReflection(rayOrigin, rayDirection, normal, max(ior * (1.0 - aberrationStrength), 1.0), vModelMatrixInverse);
+  vec3 rayDirectionB = totalInternalReflection(rayOrigin, rayDirection, normal, max(ior * (1.0 + aberrationStrength), 1.0), vModelMatrixInverse);
 
-  vec3 refrR = refractedSample(I, N, 1.0 / iorR);
-  vec3 refrG = refractedSample(I, N, 1.0 / iorG);
-  vec3 refrB = refractedSample(I, N, 1.0 / iorB);
+  float finalColorR = sampleEnvSmooth(rayDirectionR, directionCamPerfect).r;
+  float finalColorG = sampleEnvSmooth(rayDirectionG, directionCamPerfect).g;
+  float finalColorB = sampleEnvSmooth(rayDirectionB, directionCamPerfect).b;
+  diffuseColor.rgb *= vec3(finalColorR, finalColorG, finalColorB) * envMapIntensity;
 
-  vec3 refrColor = vec3(refrR.r, refrG.g, refrB.b) * tintColor;
+  // Soft fresnel rim — pulls highlights toward white at grazing angles.
+  vec3 viewDirection = normalize(vWorldPosition - cameraPosition);
+  float nFresnel = fresnelFunc(viewDirection, normal) * fresnel;
 
-  // Schlick Fresnel between refraction (centre) and reflection (edges).
-  float cosTheta = clamp(dot(N, V), 0.0, 1.0);
-  float F0 = pow((1.0 - ior) / (1.0 + ior), 2.0);
-  float fresnel = F0 + (1.0 - F0) * pow(1.0 - cosTheta, fresnelPower);
-
-  vec3 col = mix(refrColor, reflColor, fresnel) * envMapIntensity;
-
-  // Add tight specular highlights from scene-direct lights so pinpoint
-  // sources still appear ON the diamond surface, not just inside it.
-  if (sparkleStrength > 0.0) {
-    for (int i = 0; i < MAX_LIGHTS; ++i) {
-      if (i >= numLights) break;
-      vec3 L = normalize(lightDirs[i]);
-      vec3 H = normalize(L + V);
-      float spec = pow(max(dot(N, H), 0.0), 256.0);
-      col += lightColors[i] * spec * sparkleStrength;
-    }
-  }
-
-  vec4 outColor = vec4(col, 1.0);
+  vec4 outColor = vec4(mix(diffuseColor.rgb, vec3(1.0), nFresnel), diffuseColor.a);
 
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -169,77 +186,66 @@ void main() {
 }
 `;
 
-const DEFAULT_LIGHT_DIRS = [
-  new Vector3(0, 0, 1),
-  new Vector3(0, 0, 1),
-  new Vector3(0, 0, 1),
-  new Vector3(0, 0, 1)
-];
-const DEFAULT_LIGHT_COLORS = [
-  new Vector3(0, 0, 0),
-  new Vector3(0, 0, 0),
-  new Vector3(0, 0, 0),
-  new Vector3(0, 0, 0)
-];
-
 /**
  * @typedef DiamondMaterialOptions
  * @property {string} [name]
  * @property {string | number} [color]
  * @property {import('three').Texture | null} [envMap]
+ * @property {import('three').BufferGeometry | null} [geometry] - Source geometry to build a BVH from.
+ * @property {import('three-mesh-bvh').MeshBVH | null} [bvh] - Pre-built BVH (overrides geometry).
  * @property {number} [ior]
  * @property {number} [dispersion]
+ * @property {number} [bounces]
+ * @property {number} [fresnel]
  * @property {number} [envMapIntensity]
- * @property {number} [fresnelPower]
- * @property {number} [secondaryBounce]
- * @property {number} [sparkleStrength]
  */
 
 /**
- * Build a custom shader material that mimics a faceted diamond by sampling
- * an equirectangular HDR with refracted view rays.
+ * Build a custom diamond material that ray-traces through the mesh's BVH.
+ * One of `geometry` or `bvh` must be supplied so the shader has something
+ * to bounce rays against.
  *
  * @param {DiamondMaterialOptions} [opts]
  */
 export function createDiamondMaterial(opts = {}) {
-  const uniforms = UniformsUtils.merge([
-    {
-      envMap: { value: null },
-      cameraPos: { value: new Vector3() },
-      tintColor: { value: new Color(0xffffff) },
-      ior: { value: 2.417 },
-      dispersion: { value: 0.8 },
-      envMapIntensity: { value: 1.8 },
-      fresnelPower: { value: 5.0 },
-      secondaryBounce: { value: 0.55 },
-      sparkleStrength: { value: 1.5 },
-      numLights: { value: 0 },
-      lightDirs: { value: DEFAULT_LIGHT_DIRS.map((v) => v.clone()) },
-      lightColors: { value: DEFAULT_LIGHT_COLORS.map((v) => v.clone()) }
-    }
-  ]);
+  const bvhUniform = new MeshBVHUniformStruct();
+  const bvh = opts.bvh ?? (opts.geometry ? new MeshBVH(opts.geometry) : null);
+  if (bvh) bvhUniform.updateFrom(bvh);
+
+  // Defaults derived from a real diamond's optical properties, with small
+  // boosts for screen-rendered punch (IOR 2.6 vs. physical 2.42).
+  const uniforms = {
+    envMap: { value: opts.envMap ?? null },
+    bvh: { value: bvhUniform },
+    bounces: { value: typeof opts.bounces === 'number' ? opts.bounces : 5 },
+    ior: { value: typeof opts.ior === 'number' ? opts.ior : 2.6 },
+    aberrationStrength: { value: typeof opts.dispersion === 'number' ? opts.dispersion : 0.01 },
+    fresnel: { value: typeof opts.fresnel === 'number' ? opts.fresnel : 0.5 },
+    tintColor: { value: new Color(opts.color ?? 0xffffff) },
+    opacity: { value: 1.0 },
+    envMapIntensity: { value: typeof opts.envMapIntensity === 'number' ? opts.envMapIntensity : 1.3 },
+    resolution: { value: new Vector2(1, 1) },
+    viewMatrixInverse: { value: new Matrix4() },
+    projectionMatrixInverse: { value: new Matrix4() }
+  };
 
   const material = new ShaderMaterial({
     name: opts.name || 'DiamondShaderMaterial',
     uniforms,
     vertexShader: VERTEX_SHADER,
     fragmentShader: FRAGMENT_SHADER,
-    // Diamonds are opaque from the renderer's POV — we draw a solid colour
-    // per fragment and don't blend. This keeps it cheap and correct under
-    // sorting.
     transparent: false,
     depthWrite: true,
     depthTest: true
   });
 
-  // Tag so the rest of the codebase can detect this material without an
-  // instanceof import (avoids circular imports in the inspector).
   material.userData.isDiamondShaderMaterial = true;
+  material.userData.bvh = bvh; // keep a strong ref so it isn't GC'd
 
   // ---- Property surface aliased to MeshPhysicalMaterial -------------------
-  // The inspector, applyPreset, and the override sidecar all probe materials
-  // by reading `mat.ior`, `mat.color`, etc. Expose those as ordinary getters
-  // and setters that read/write the uniforms behind the scenes.
+  // The inspector, applyPreset and the override sidecar all probe materials
+  // by reading mat.ior, mat.color, mat.dispersion, etc. Expose those as
+  // ordinary getters/setters that read/write the uniforms behind the scenes.
 
   const colorProxy = new Color(opts.color ?? 0xffffff);
   uniforms.tintColor.value.copy(colorProxy);
@@ -264,10 +270,9 @@ export function createDiamondMaterial(opts = {}) {
         return uniforms.envMap.value;
       },
       set(tex) {
-        // Our shader does its own equirect UV math against an unfiltered
-        // float texture. Silently ignore any other type (most importantly
-        // PMREM-packed 2D textures, which would be sampled as garbage).
-        // Allow null so callers can clear the slot if they really want.
+        // Our shader does its own equirect UV math, so PMREM-packed
+        // textures would sample as garbage. Silently ignore non-equirect
+        // assignments — the gem env we wired in at construction stays.
         if (tex === null || tex === undefined) {
           uniforms.envMap.value = null;
           return;
@@ -291,10 +296,20 @@ export function createDiamondMaterial(opts = {}) {
       enumerable: true,
       configurable: true,
       get() {
-        return uniforms.dispersion.value;
+        return uniforms.aberrationStrength.value;
       },
       set(v) {
-        if (typeof v === 'number') uniforms.dispersion.value = v;
+        if (typeof v === 'number') uniforms.aberrationStrength.value = v;
+      }
+    },
+    bounces: {
+      enumerable: true,
+      configurable: true,
+      get() {
+        return uniforms.bounces.value;
+      },
+      set(v) {
+        if (typeof v === 'number') uniforms.bounces.value = v;
       }
     },
     envMapIntensity: {
@@ -307,11 +322,19 @@ export function createDiamondMaterial(opts = {}) {
         if (typeof v === 'number') uniforms.envMapIntensity.value = v;
       }
     },
-    // Aliased numeric props with no GLSL effect — the inspector still binds
-    // to them so designers can drag the same sliders, but they're ignored.
-    // Keeping them as numbers prevents `if (typeof mat[prop] === 'number')`
-    // gates in applyPreset / inspector from skipping the material entirely
-    // and lets a single override JSON drive both shader and physical materials.
+    reflectivity: {
+      enumerable: true,
+      configurable: true,
+      get() {
+        return uniforms.fresnel.value;
+      },
+      set(v) {
+        if (typeof v === 'number') uniforms.fresnel.value = v;
+      }
+    },
+    // Aliased no-op props so the inspector + override sidecar can apply the
+    // same JSON they'd apply to a MeshPhysicalMaterial without skipping the
+    // material entirely. None of these have any GLSL effect.
     metalness: writableNumber(0),
     roughness: writableNumber(0),
     transmission: writableNumber(1),
@@ -320,46 +343,15 @@ export function createDiamondMaterial(opts = {}) {
     clearcoatRoughness: writableNumber(0)
   });
 
-  // Apply explicit overrides from the caller.
-  if (typeof opts.ior === 'number') material.ior = opts.ior;
-  if (typeof opts.dispersion === 'number') material.dispersion = opts.dispersion;
-  if (typeof opts.envMapIntensity === 'number') material.envMapIntensity = opts.envMapIntensity;
-  if (typeof opts.fresnelPower === 'number') uniforms.fresnelPower.value = opts.fresnelPower;
-  if (typeof opts.secondaryBounce === 'number') uniforms.secondaryBounce.value = opts.secondaryBounce;
-  if (typeof opts.sparkleStrength === 'number') uniforms.sparkleStrength.value = opts.sparkleStrength;
-  if (opts.envMap) material.envMap = opts.envMap;
-
-  // Per-frame sync of camera position + lights. Three.js calls onBeforeRender
-  // right before the draw, with the active camera passed in.
-  material.onBeforeRender = function (_renderer, scene, cam) {
-    uniforms.cameraPos.value.setFromMatrixPosition(cam.matrixWorld);
-    syncLights(scene, uniforms);
+  // Per-frame sync: camera position is built into Three's shaders, but the
+  // matrices and resolution we need aren't, so wire them in onBeforeRender.
+  material.onBeforeRender = function (renderer, _scene, cam) {
+    renderer.getSize(uniforms.resolution.value);
+    uniforms.viewMatrixInverse.value.copy(cam.matrixWorld);
+    uniforms.projectionMatrixInverse.value.copy(cam.projectionMatrixInverse);
   };
 
   return material;
-}
-
-/**
- * Walk the scene once per draw, copy at most MAX_LIGHTS directional lights
- * into the uniforms array. Cheap — jewelry scenes have <5 lights total.
- */
-function syncLights(scene, uniforms) {
-  let count = 0;
-  scene.traverse((obj) => {
-    if (count >= 4) return;
-    if (!obj.isDirectionalLight || !obj.visible) return;
-    const dir = uniforms.lightDirs.value[count];
-    const col = uniforms.lightColors.value[count];
-    // DirectionalLight points from `position` toward `target.position`. For
-    // shading we want the direction from the surface TOWARD the light,
-    // i.e. (position - target).
-    dir.copy(obj.position);
-    if (obj.target) dir.sub(obj.target.position);
-    dir.normalize();
-    col.set(obj.color.r * obj.intensity, obj.color.g * obj.intensity, obj.color.b * obj.intensity);
-    count++;
-  });
-  uniforms.numLights.value = count;
 }
 
 function writableNumber(initial) {
@@ -378,12 +370,17 @@ function writableNumber(initial) {
 
 /**
  * Heuristic: should this material be replaced with the diamond shader?
- * We look for very high IOR + transmissive + low metalness, an explicit
- * material name like "Diamond" / "Moissanite", or a host mesh whose name
- * matches (the GLB exporter often gives the material a generic name like
- * "Material.001" while the mesh keeps the artist's "Diamond_Round" label).
- * Sapphires/rubies/emeralds have IOR 1.5–1.8 and benefit from
- * MeshPhysicalMaterial's attenuation, so they stay on the physical path.
+ *
+ * Triggers in any of these cases:
+ *   - The material is already our shader (re-applying overrides).
+ *   - The override / preset explicitly asks for `shader: "diamond"`.
+ *   - The material or host mesh is named like a diamond/moissanite (the
+ *     GLB exporter often stamps a generic "Material.001" while the artist
+ *     keeps "Diamond_Round" on the mesh).
+ *   - The material has the high-IOR + transmission shape of a clear gem.
+ *
+ * Sapphires/rubies/emeralds (IOR 1.5–1.8) stay on the physical material
+ * path because they need attenuation-based colour transmission.
  *
  * @param {import('three').Material} mat
  * @param {{ ior?: number, name?: string, shader?: string } | null} [override]
@@ -392,7 +389,6 @@ function writableNumber(initial) {
 export function shouldUseDiamondShader(mat, override = null, mesh = null) {
   if (!mat) return false;
   if (mat.userData?.isDiamondShaderMaterial) return true;
-  // Explicit opt-in via override sidecar / preset wins over heuristics.
   if (override?.shader === 'diamond') return true;
   if (override?.shader && override.shader !== 'diamond') return false;
 

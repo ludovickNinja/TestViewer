@@ -25,6 +25,8 @@ const NUMERIC_PROPS = [
   'thickness',
   'ior',
   'dispersion',
+  'bounces',
+  'reflectivity',
   'clearcoat',
   'clearcoatRoughness',
   'sheen',
