@@ -431,7 +431,7 @@ export function createScene(container) {
           color: oldMat.color ? oldMat.color.getHex() : 0xffffff,
           ior: typeof oldMat.ior === 'number' ? oldMat.ior : 2.6,
           dispersion: typeof oldMat.dispersion === 'number' ? oldMat.dispersion : 0.01,
-          bounces: 5,
+          bounces: 3,
           fresnel: 0.5,
           envMap: equirectEnvironments.gem,
           envMapIntensity: HDRI_CONFIG.gem.intensity,
