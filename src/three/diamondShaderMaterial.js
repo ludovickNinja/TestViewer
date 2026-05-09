@@ -126,15 +126,11 @@ uniform float envMapIntensity;
 // which fails to compile under GLSL ES 3.00.
 #include <common>
 
-const float TWO_PI = 6.28318530718;
-const float ONE_OVER_PI = 0.31830988618;
-
-vec2 equirectUv(vec3 dir) {
-  vec3 d = normalize(dir);
-  float u = atan(d.z, d.x) / TWO_PI + 0.5;
-  float v = asin(clamp(d.y, -1.0, 1.0)) * ONE_OVER_PI + 0.5;
-  return vec2(u, v);
-}
+// equirectUv(vec3) is provided by <common> (and PI / PI2 / RECIPROCAL_PI /
+// RECIPROCAL_PI2). Don't redeclare it here — that's a hard "function already
+// has a body" compile error under GLSL ES 3.00. The built-in expects a
+// normalized direction; our callers pass normalized vectors, so this is a
+// drop-in replacement.
 
 float fresnelFunc(vec3 viewDirection, vec3 worldNormal) {
   return pow(1.0 + dot(viewDirection, worldNormal), 10.0);
