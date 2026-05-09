@@ -156,24 +156,44 @@ export function createScene(container) {
     autoRotateSpeed: 0.8,          // Speed of auto-rotation if enabled
   };
 
+  // Vite's BASE_URL is the path prefix the site is served from. On localhost
+  // it's "/"; on GitHub Pages project sites it's "/<repo>/". Without this,
+  // absolute paths like "/env_gem_001.exr" 404 on Pages because they resolve
+  // to the org root instead of the project root.
+  const baseUrl = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) || '/';
+
   // Two environments: a soft studio map for metals, and a contrastier map
   // with stronger pinpoint highlights for gems. Loader is picked from the
   // file extension (.hdr -> RGBELoader, .exr -> EXRLoader).
   const HDRI_CONFIG = {
     enabled: true,
     metal: {
-      path: '/env_metal_014.hdr',  // Studio-softbox HDR for metals
+      path: `${baseUrl}env_metal_014.hdr`,  // Studio-softbox HDR for metals
       // Bumped from 1.5 to compensate for the lower toneMappingExposure.
       // Metal needs a brighter env to read as polished rather than dull.
       intensity: 2.5,
     },
     gem: {
-      path: '/env_gem_001.exr',    // Contrasty EXR for gem fire/sparkle
+      path: `${baseUrl}env_gem_001.exr`,    // Contrasty EXR for gem fire/sparkle
       // Bumped from 2.0 because exposure was lowered from 2.4 -> 1.5; the
       // gem now depends more on its envMap than on the global tonemap.
       intensity: 2.6,
     },
   };
+
+  /**
+   * Resolve a public-asset path against the site's BASE_URL. Used for any
+   * URL that comes from a preset / override sidecar so the same string
+   * works in localhost dev and under a GitHub Pages subpath.
+   * @param {string} path
+   */
+  function resolveAsset(path) {
+    if (!path) return path;
+    if (/^https?:\/\//i.test(path)) return path; // already absolute external
+    if (path.startsWith(baseUrl)) return path;   // already prefixed
+    if (path.startsWith('/')) return `${baseUrl}${path.slice(1)}`;
+    return `${baseUrl}${path}`;
+  }
 
   // ============================================================================
   // SCENE SETUP — Use configurations above
@@ -419,22 +439,23 @@ export function createScene(container) {
 
   function loadMatcapTexture(url) {
     if (!url) return null;
-    const cached = matcapCache.get(url);
+    const resolved = resolveAsset(url);
+    const cached = matcapCache.get(resolved);
     if (cached) return cached;
     const tex = textureLoader.load(
-      url,
+      resolved,
       // Once it actually loads, kick a render so the canvas updates without
       // requiring user interaction.
       () => requestRender(),
       undefined,
-      (err) => console.error('[viewer] failed to load matcap', url, err)
+      (err) => console.error('[viewer] failed to load matcap', resolved, err)
     );
     tex.colorSpace = SRGBColorSpace;
     tex.minFilter = LinearFilter;
     tex.magFilter = LinearFilter;
     tex.generateMipmaps = false;
     tex.flipY = true;
-    matcapCache.set(url, tex);
+    matcapCache.set(resolved, tex);
     return tex;
   }
 
