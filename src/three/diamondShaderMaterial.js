@@ -8,9 +8,9 @@
 //
 // For diamonds specifically we don't actually need to see real geometry
 // behind the stone — the convincing look comes from sampling a contrasty
-// HDR environment with refracted ray directions. That's the "iJewel3D-style"
-// trick: skip the transmission pass entirely and sample the gem HDR directly
-// using Snell's law in the fragment shader.
+// HDR environment with refracted ray directions. So this material skips
+// the transmission pass entirely and samples the gem HDR directly using
+// Snell's law in the fragment shader.
 //
 // What this material does, per fragment:
 //   1. Refract the view ray through the front facet using Snell's law.
