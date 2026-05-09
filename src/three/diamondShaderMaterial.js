@@ -40,12 +40,30 @@ import {
   ShaderMaterial,
   Vector2
 } from 'three';
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
   MeshBVH,
   MeshBVHUniformStruct,
   shaderStructs,
   shaderIntersectFunction
 } from 'three-mesh-bvh';
+
+/**
+ * Build a MeshBVH from a BufferGeometry, accepting non-indexed input by
+ * indexing it on the fly. Returns null if construction fails for any reason.
+ */
+function buildBvh(geometry) {
+  if (!geometry) return null;
+  try {
+    // three-mesh-bvh requires indexed geometry. GLBs usually export indexed
+    // (especially Draco-compressed ones) but some pipelines drop the index.
+    const indexed = geometry.index ? geometry : mergeVertices(geometry);
+    return new MeshBVH(indexed);
+  } catch (err) {
+    console.warn('[diamond] failed to build BVH from geometry', err);
+    return null;
+  }
+}
 
 const VERTEX_SHADER = /* glsl */ `
 uniform mat4 viewMatrixInverse;
@@ -177,12 +195,17 @@ void main() {
   vec3 viewDirection = normalize(vWorldPosition - cameraPosition);
   float nFresnel = fresnelFunc(viewDirection, normal) * fresnel;
 
-  vec4 outColor = vec4(mix(diffuseColor.rgb, vec3(1.0), nFresnel), diffuseColor.a);
+  // gl_FragColor must be written BEFORE the chunks below — they read it
+  // (tonemapping_fragment runs gl_FragColor.rgb = toneMapping(...) and
+  // colorspace_fragment runs gl_FragColor = linearToOutputTexel(...)).
+  // If we set gl_FragColor after them, the chunks no-op on undefined memory
+  // and the final colour skips both the tone-mapping AND sRGB conversion,
+  // which on a Windows + ANGLE pipeline can render the surface as effectively
+  // invisible (linear values ≪ 1 are clipped by the sRGB framebuffer).
+  gl_FragColor = vec4(mix(diffuseColor.rgb, vec3(1.0), nFresnel), diffuseColor.a);
 
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
-
-  gl_FragColor = outColor;
 }
 `;
 
@@ -208,9 +231,16 @@ void main() {
  * @param {DiamondMaterialOptions} [opts]
  */
 export function createDiamondMaterial(opts = {}) {
+  // Build the BVH first — if construction fails (non-indexed geometry that
+  // can't be indexed, or a corrupt input), return null so the caller can
+  // fall back to a non-BVH material rather than rendering an invisible mesh.
+  const bvh = opts.bvh ?? buildBvh(opts.geometry);
+  if (!bvh) {
+    console.warn('[diamond] no BVH available; cannot create BVH ray-traced material');
+    return null;
+  }
   const bvhUniform = new MeshBVHUniformStruct();
-  const bvh = opts.bvh ?? (opts.geometry ? new MeshBVH(opts.geometry) : null);
-  if (bvh) bvhUniform.updateFrom(bvh);
+  bvhUniform.updateFrom(bvh);
 
   // Defaults derived from a real diamond's optical properties, with small
   // boosts for screen-rendered punch (IOR 2.6 vs. physical 2.42).
