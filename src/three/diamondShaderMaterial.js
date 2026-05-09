@@ -36,7 +36,6 @@
 import {
   Color,
   EquirectangularReflectionMapping,
-  GLSL3,
   Matrix4,
   ShaderMaterial,
   Vector2
@@ -106,9 +105,13 @@ uniform vec3 tintColor;
 uniform float opacity;
 uniform float envMapIntensity;
 
+// Do NOT #include <tonemapping_pars_fragment> or <colorspace_pars_fragment>
+// here. For ShaderMaterial under WebGL2, three.js auto-injects both into the
+// fragment prefix. Re-including them redefines toneMappingExposure and the
+// helper functions, which fails to compile under GLSL ES 3.00. The matching
+// <tonemapping_fragment> / <colorspace_fragment> chunks at the bottom of
+// main() still work because they only call the already-defined helpers.
 #include <common>
-#include <tonemapping_pars_fragment>
-#include <colorspace_pars_fragment>
 
 const float TWO_PI = 6.28318530718;
 const float ONE_OVER_PI = 0.31830988618;
@@ -265,15 +268,6 @@ export function createDiamondMaterial(opts = {}) {
     uniforms,
     vertexShader: VERTEX_SHADER,
     fragmentShader: FRAGMENT_SHADER,
-    // The shader uses GLSL ES 3.00 features that don't exist in 1.00:
-    //   - usampler2D / uvec4 / texelFetch (from three-mesh-bvh's BVH traversal)
-    //   - textureGrad (sampleEnvSmooth)
-    //   - precision qualifiers for isampler2D / usampler2D
-    // Without GLSL3 here, three.js wraps the source as GLSL 1.00 and the
-    // fragment shader fails to compile ("Fragment shader is not compiled").
-    // GLSL3 mode also installs three's compat macros (varying → in/out,
-    // gl_FragColor → pc_fragColor) so the existing source keeps working.
-    glslVersion: GLSL3,
     transparent: false,
     depthWrite: true,
     depthTest: true
