@@ -361,6 +361,8 @@ export function createScene(container) {
     'thickness',
     'ior',
     'dispersion',
+    'bounces',
+    'reflectivity',
     'clearcoat',
     'clearcoatRoughness',
     'sheen',
@@ -413,20 +415,28 @@ export function createScene(container) {
    * @returns {import('three').ShaderMaterial}
    */
   function swapToDiamondShader(mesh, oldMat, matIndex) {
+    // The BVH is built from the mesh's local-space geometry. We pass the
+    // geometry through and let the material build + own the BVH (it keeps
+    // a strong reference in userData so it isn't GC'd while the material
+    // is alive). Build cost is sub-millisecond for the few hundred
+    // triangles a diamond mesh typically has.
     const diamondMat = createDiamondMaterial({
       name: oldMat.name || 'Diamond',
       color: oldMat.color ? oldMat.color.getHex() : 0xffffff,
-      ior: typeof oldMat.ior === 'number' ? oldMat.ior : 2.417,
-      dispersion: typeof oldMat.dispersion === 'number' ? oldMat.dispersion : 0.8,
+      ior: typeof oldMat.ior === 'number' ? oldMat.ior : 2.6,
+      dispersion: typeof oldMat.dispersion === 'number' ? oldMat.dispersion : 0.01,
+      bounces: 5,
+      fresnel: 0.5,
       envMap: equirectEnvironments.gem,
-      envMapIntensity: HDRI_CONFIG.gem.intensity
+      envMapIntensity: HDRI_CONFIG.gem.intensity,
+      geometry: mesh.geometry
     });
     if (Array.isArray(mesh.material)) {
       mesh.material[matIndex] = diamondMat;
     } else {
       mesh.material = diamondMat;
     }
-    console.log(`[viewer] swapped "${oldMat.name || mesh.name}" to diamond shader`);
+    console.log(`[viewer] swapped "${oldMat.name || mesh.name}" to diamond shader (BVH ray tracer)`);
     oldMat.dispose?.();
     return diamondMat;
   }
