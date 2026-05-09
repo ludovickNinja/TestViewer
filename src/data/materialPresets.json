@@ -65,6 +65,13 @@
       "envMap": "gem",
       "envMapIntensity": 2.4
     },
+    "diamond-matcap": {
+      "label": "Diamond (matcap)",
+      "shader": "matcap",
+      "matcap": "/diamond-matcap.png",
+      "color": "#ffffff",
+      "envMapIntensity": 1.0
+    },
     "moissanite": {
       "label": "Moissanite",
       "color": "#ffffff",

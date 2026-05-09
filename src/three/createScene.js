@@ -31,12 +31,14 @@ import {
   PMREMGenerator,
   Scene,
   SRGBColorSpace,
+  TextureLoader,
   WebGLRenderer
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
 import { createDiamondMaterial, shouldUseDiamondShader } from './diamondShaderMaterial.js';
+import { createDiamondMatcapMaterial } from './diamondMatcapMaterial.js';
 
 // Mobile detection drives a few perf tradeoffs (lower pixel ratio cap, lower
 // transmission render target resolution, halved dispersion). We treat every
@@ -125,17 +127,17 @@ export function createScene(container) {
   // want to brighten indirect light without re-exporting the map.
   const SCENE_ENV_INTENSITY = 1.0;
 
-  // Direct lights are dimmed on top of the HDR — diamonds depend on the
-  // contrast between black facets and bright pinpoint highlights, and ambient
-  // / fill light fills in the blacks and washes out the sparkle. The HDR
-  // delivers most of the lighting; these directional lights only exist to
-  // give the metal a key-light direction and the gem a sparkle source.
+  // Direct lights are kept moderate. Diamond fire wants dark facets, but the
+  // metal HDR is a soft studio softbox that needs directional lights to
+  // shape highlights and avoid looking lifeless. These are about half the
+  // original values — enough to read on metal, not so bright that they
+  // crush the gem's contrast.
   const LIGHTING_CONFIG = {
-    ambientIntensity: 0.15,
-    hemisphereIntensity: 0.2,
-    keyLightIntensity: 2.0,
-    fillLightIntensity: 0.8,
-    rimLightIntensity: 1.0,
+    ambientIntensity: 0.4,
+    hemisphereIntensity: 0.4,
+    keyLightIntensity: 3.0,
+    fillLightIntensity: 1.5,
+    rimLightIntensity: 1.5,
   };
 
   const LIGHT_POSITIONS = {
@@ -161,7 +163,9 @@ export function createScene(container) {
     enabled: true,
     metal: {
       path: '/env_metal_014.hdr',  // Studio-softbox HDR for metals
-      intensity: 1.5,              // envMapIntensity applied to metal materials
+      // Bumped from 1.5 to compensate for the lower toneMappingExposure.
+      // Metal needs a brighter env to read as polished rather than dull.
+      intensity: 2.5,
     },
     gem: {
       path: '/env_gem_001.exr',    // Contrasty EXR for gem fire/sparkle
@@ -402,9 +406,89 @@ export function createScene(container) {
     } else {
       mesh.material = diamondMat;
     }
-    // Free the old material's GPU resources — we're not coming back to it.
+    console.log(`[viewer] swapped "${oldMat.name || mesh.name}" to diamond shader`);
     oldMat.dispose?.();
     return diamondMat;
+  }
+
+  // Matcap textures are colour data sampled in the fragment shader. We load
+  // each unique URL once and cache it so an override referencing the same
+  // image across multiple stones doesn't re-fetch.
+  const matcapCache = new Map(); // url -> Texture
+  const textureLoader = new TextureLoader();
+
+  function loadMatcapTexture(url) {
+    if (!url) return null;
+    const cached = matcapCache.get(url);
+    if (cached) return cached;
+    const tex = textureLoader.load(
+      url,
+      // Once it actually loads, kick a render so the canvas updates without
+      // requiring user interaction.
+      () => requestRender(),
+      undefined,
+      (err) => console.error('[viewer] failed to load matcap', url, err)
+    );
+    tex.colorSpace = SRGBColorSpace;
+    tex.minFilter = LinearFilter;
+    tex.magFilter = LinearFilter;
+    tex.generateMipmaps = false;
+    tex.flipY = true;
+    matcapCache.set(url, tex);
+    return tex;
+  }
+
+  /**
+   * Replace a material with our matcap-based diamond material. Matcap is the
+   * cheapest possible diamond renderer: one texture lookup per pixel, no HDR
+   * needed, no transmission pass. Driven by a `matcap: <url>` field in the
+   * preset / override sidecar (typically combined with `shader: "matcap"`).
+   *
+   * @param {import('three').Mesh} mesh
+   * @param {import('three').Material} oldMat
+   * @param {number} matIndex
+   * @param {string} matcapUrl
+   * @returns {import('three').ShaderMaterial}
+   */
+  function swapToMatcap(mesh, oldMat, matIndex, matcapUrl) {
+    const matcapTex = loadMatcapTexture(matcapUrl);
+    const matcapMat = createDiamondMatcapMaterial({
+      name: oldMat.name || 'Diamond',
+      color: oldMat.color ? oldMat.color.getHex() : 0xffffff,
+      matcap: matcapTex,
+      intensity: 1.0
+    });
+    if (Array.isArray(mesh.material)) {
+      mesh.material[matIndex] = matcapMat;
+    } else {
+      mesh.material = matcapMat;
+    }
+    console.log(`[viewer] swapped "${oldMat.name || mesh.name}" to matcap (${matcapUrl})`);
+    oldMat.dispose?.();
+    return matcapMat;
+  }
+
+  /**
+   * Should this material/mesh be rendered as a matcap? Triggered when the
+   * preset or override sidecar specifies `shader: "matcap"` or simply a
+   * `matcap: "<url>"` string.
+   *
+   * @param {import('three').Material} mat
+   * @param {{ shader?: string, matcap?: string } | null} override
+   * @returns {string | null} The matcap URL to use, or null.
+   */
+  function matcapUrlFor(mat, override) {
+    if (mat?.userData?.isDiamondMatcapMaterial) {
+      // Already a matcap; no swap needed but caller can refresh the texture.
+      return typeof override?.matcap === 'string' ? override.matcap : null;
+    }
+    if (override?.shader === 'matcap' && typeof override?.matcap === 'string') {
+      return override.matcap;
+    }
+    if (typeof override?.matcap === 'string' && override.matcap.length > 0) {
+      return override.matcap;
+    }
+    return null;
   }
 
   /**
@@ -436,36 +520,105 @@ export function createScene(container) {
 
     root.traverse((obj) => {
       if (!obj.isMesh) return;
-      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-      for (let i = 0; i < mats.length; i++) {
-        let mat = mats[i];
-        if (!mat) continue;
+      processMeshMaterials(obj, overrides, scale);
+    });
+    requestRender();
+  }
 
-        const matOverride = overrides && mat.name ? overrides[mat.name] : null;
+  /**
+   * Apply environment + override + class-swap logic to one mesh's materials.
+   * Shared between the initial model walk and the inspector's "apply preset"
+   * path so behaviour is identical regardless of when an override changes.
+   *
+   * @param {import('three').Mesh} obj
+   * @param {Record<string, Record<string, unknown>> | null} overrides
+   * @param {number} scale
+   */
+  function processMeshMaterials(obj, overrides, scale) {
+    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+    for (let i = 0; i < mats.length; i++) {
+      let mat = mats[i];
+      if (!mat) continue;
 
-        // Diamond / moissanite path: replace the material with our custom
-        // shader before applying overrides. Skip when there's no equirect
-        // gem map to feed it (e.g. HDR loading failed).
+      // Override lookup falls back to the mesh name, since the GLB exporter
+      // commonly leaves materials with generic names like "Material.001"
+      // even when the mesh is "Diamond_Round".
+      const matOverride =
+        (overrides && mat.name && overrides[mat.name]) ||
+        (overrides && obj.name && overrides[obj.name]) ||
+        null;
+
+      // Highest priority: explicit matcap request from preset/override.
+      const matcapUrl = matcapUrlFor(mat, matOverride);
+      if (matcapUrl) {
+        // Already on a matcap material with the same texture — just refresh
+        // the override and skip the swap.
         if (
-          equirectEnvironments.gem &&
-          shouldUseDiamondShader(mat, matOverride)
+          mat.userData?.isDiamondMatcapMaterial &&
+          uniformMatcapUrl(mat) === matcapUrl
         ) {
-          mat = swapToDiamondShader(obj, mat, i);
-          mats[i] = mat;
           if (matOverride) applyOverrideToMaterial(mat, matOverride, scale);
           continue;
         }
-
-        const gem = isGemMaterial(mat);
-        mat.envMap = gem ? environments.gem : environments.metal;
-        mat.envMapIntensity = gem ? HDRI_CONFIG.gem.intensity : HDRI_CONFIG.metal.intensity;
-        mat.needsUpdate = true;
-
-        if (matOverride) {
-          applyOverrideToMaterial(mat, matOverride, scale);
-        }
+        mat = swapToMatcap(obj, mat, i, matcapUrl);
+        if (Array.isArray(obj.material)) obj.material[i] = mat;
+        else obj.material = mat;
+        if (matOverride) applyOverrideToMaterial(mat, matOverride, scale);
+        continue;
       }
-    });
+
+      // Diamond / moissanite path: replace with the refraction shader.
+      // Skip when there's no equirect gem map to feed it.
+      if (
+        equirectEnvironments.gem &&
+        shouldUseDiamondShader(mat, matOverride, obj)
+      ) {
+        if (mat.userData?.isDiamondShaderMaterial) {
+          if (matOverride) applyOverrideToMaterial(mat, matOverride, scale);
+          continue;
+        }
+        mat = swapToDiamondShader(obj, mat, i);
+        if (Array.isArray(obj.material)) obj.material[i] = mat;
+        else obj.material = mat;
+        if (matOverride) applyOverrideToMaterial(mat, matOverride, scale);
+        continue;
+      }
+
+      const gem = isGemMaterial(mat);
+      mat.envMap = gem ? environments.gem : environments.metal;
+      mat.envMapIntensity = gem ? HDRI_CONFIG.gem.intensity : HDRI_CONFIG.metal.intensity;
+      mat.needsUpdate = true;
+
+      if (matOverride) {
+        applyOverrideToMaterial(mat, matOverride, scale);
+      }
+    }
+  }
+
+  function uniformMatcapUrl(mat) {
+    // Cache lookup is the source of truth for which URL produced this texture.
+    const tex = mat.matcap;
+    if (!tex) return null;
+    for (const [url, cachedTex] of matcapCache.entries()) {
+      if (cachedTex === tex) return url;
+    }
+    return null;
+  }
+
+  /**
+   * Re-evaluate one mesh's material classes + properties given an updated
+   * override entry. Used by the inspector when the user applies a preset
+   * that would change the shader (e.g. picking the matcap diamond preset
+   * over the refraction one).
+   *
+   * @param {import('three').Mesh} mesh
+   * @param {Record<string, Record<string, unknown>>} overrides
+   * @param {number} scale
+   */
+  async function reapplyMeshMaterial(mesh, overrides, scale = 1) {
+    await envMapsReady;
+    if (!environments.metal || !environments.gem) return;
+    processMeshMaterials(mesh, overrides, scale);
     requestRender();
   }
 
@@ -551,6 +704,7 @@ export function createScene(container) {
     stop,
     requestRender,
     applyMaterialEnvironments,
+    reapplyMeshMaterial,
     environments,
     equirectEnvironments,
     lights,
