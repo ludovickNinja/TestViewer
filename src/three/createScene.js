@@ -36,7 +36,7 @@ import {
   WebGLRenderer
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
+import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
 import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
 import { createDiamondMaterial, shouldUseDiamondShader } from './diamondShaderMaterial.js';
 import { createDiamondMatcapMaterial } from './diamondMatcapMaterial.js';
@@ -165,7 +165,7 @@ export function createScene(container) {
 
   // Two environments: a soft studio map for metals, and a contrastier map
   // with stronger pinpoint highlights for gems. Loader is picked from the
-  // file extension (.hdr -> RGBELoader, .exr -> EXRLoader).
+  // file extension (.hdr -> HDRLoader, .exr -> EXRLoader).
   const HDRI_CONFIG = {
     enabled: true,
     metal: {
@@ -275,7 +275,7 @@ export function createScene(container) {
   if (HDRI_CONFIG.enabled) {
     const pmrem = new PMREMGenerator(renderer);
     pmrem.compileEquirectangularShader();
-    const rgbeLoader = new RGBELoader();
+    const hdrLoader = new HDRLoader();
     const exrLoader = new EXRLoader();
 
     // Pick the right loader based on file extension. Both produce equirect
@@ -283,7 +283,7 @@ export function createScene(container) {
     const loaderFor = (path) => {
       const ext = path.split('.').pop().toLowerCase();
       if (ext === 'exr') return exrLoader;
-      return rgbeLoader;
+      return hdrLoader;
     };
 
     const loadEnv = (path, { keepEquirect = false } = {}) => new Promise((resolve, reject) => {
