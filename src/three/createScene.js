@@ -111,7 +111,7 @@ export function createScene(container) {
   // highlights against dark facets — a high exposure crushes that contrast.
   // EnvMapIntensity on the gem material is bumped to compensate.
   const RENDERER_CONFIG = {
-    toneMappingExposure: 1.5,
+    toneMappingExposure: 0.4,
     // iPhones/iPads commonly report DPR 3, which makes the transmission pass
     // (which renders at full canvas resolution) ~9× as expensive as it
     // appears. Cap aggressively on mobile.
