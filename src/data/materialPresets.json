@@ -55,12 +55,12 @@
       "label": "Diamond",
       "shader": "diamond",
       "color": "#ffffff",
-      "ior": 2.6,
-      "dispersion": 0.01,
+      "ior": 2.422,
+      "dispersion": 0.003,
       "bounces": 3,
       "reflectivity": 0.5,
       "envMap": "gem",
-      "envMapIntensity": 1.3
+      "envMapIntensity": 2.6
     },
     "diamond-matcap": {
       "label": "Diamond (matcap)",
