@@ -60,7 +60,7 @@
       "bounces": 3,
       "reflectivity": 0.5,
       "envMap": "gem",
-      "envMapIntensity": 2.6
+      "envMapIntensity": 4
     },
     "diamond-matcap": {
       "label": "Diamond (matcap)",
