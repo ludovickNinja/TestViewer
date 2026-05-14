@@ -441,13 +441,13 @@ export function createInspector(viewer) {
             recordOverride(mat.name, k, v, { preScaled: true });
           }
 
-          // If the preset would swap the material class (e.g. matcap or
-          // refraction-shader diamond), applyPreset alone can't do it — it
-          // only mutates existing properties. Ask the viewer to re-process
-          // this mesh against the updated overrides; that's the same code
-          // path the initial model walk uses.
+          // If the preset would swap the material class (refraction-shader
+          // diamond instead of a stock PBR material), applyPreset alone can't
+          // do it — it only mutates existing properties. Ask the viewer to
+          // re-process this mesh against the updated overrides; that's the
+          // same code path the initial model walk uses.
           if (
-            (preset.shader || preset.matcap) &&
+            preset.shader &&
             typeof viewer.reapplyMeshMaterial === 'function'
           ) {
             void viewer.reapplyMeshMaterial(mesh, overridesAsObject(), modelScale);

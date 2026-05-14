@@ -32,14 +32,12 @@ import {
   PMREMGenerator,
   Scene,
   SRGBColorSpace,
-  TextureLoader,
   WebGLRenderer
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
 import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
 import { createDiamondMaterial, shouldUseDiamondShader } from './diamondShaderMaterial.js';
-import { createDiamondMatcapMaterial } from './diamondMatcapMaterial.js';
 
 // Mobile detection drives a few perf tradeoffs (lower pixel ratio cap, lower
 // transmission render target resolution, halved dispersion). We treat every
@@ -181,20 +179,6 @@ export function createScene(container) {
       intensity: 2.6,
     },
   };
-
-  /**
-   * Resolve a public-asset path against the site's BASE_URL. Used for any
-   * URL that comes from a preset / override sidecar so the same string
-   * works in localhost dev and under a GitHub Pages subpath.
-   * @param {string} path
-   */
-  function resolveAsset(path) {
-    if (!path) return path;
-    if (/^https?:\/\//i.test(path)) return path; // already absolute external
-    if (path.startsWith(baseUrl)) return path;   // already prefixed
-    if (path.startsWith('/')) return `${baseUrl}${path.slice(1)}`;
-    return `${baseUrl}${path}`;
-  }
 
   // ============================================================================
   // SCENE SETUP — Use configurations above
@@ -485,87 +469,6 @@ export function createScene(container) {
     return mat;
   }
 
-  // Matcap textures are colour data sampled in the fragment shader. We load
-  // each unique URL once and cache it so an override referencing the same
-  // image across multiple stones doesn't re-fetch.
-  const matcapCache = new Map(); // url -> Texture
-  const textureLoader = new TextureLoader();
-
-  function loadMatcapTexture(url) {
-    if (!url) return null;
-    const resolved = resolveAsset(url);
-    const cached = matcapCache.get(resolved);
-    if (cached) return cached;
-    const tex = textureLoader.load(
-      resolved,
-      // Once it actually loads, kick a render so the canvas updates without
-      // requiring user interaction.
-      () => requestRender(),
-      undefined,
-      (err) => console.error('[viewer] failed to load matcap', resolved, err)
-    );
-    tex.colorSpace = SRGBColorSpace;
-    tex.minFilter = LinearFilter;
-    tex.magFilter = LinearFilter;
-    tex.generateMipmaps = false;
-    tex.flipY = true;
-    matcapCache.set(resolved, tex);
-    return tex;
-  }
-
-  /**
-   * Replace a material with our matcap-based diamond material. Matcap is the
-   * cheapest possible diamond renderer: one texture lookup per pixel, no HDR
-   * needed, no transmission pass. Driven by a `matcap: <url>` field in the
-   * preset / override sidecar (typically combined with `shader: "matcap"`).
-   *
-   * @param {import('three').Mesh} mesh
-   * @param {import('three').Material} oldMat
-   * @param {number} matIndex
-   * @param {string} matcapUrl
-   * @returns {import('three').ShaderMaterial}
-   */
-  function swapToMatcap(mesh, oldMat, matIndex, matcapUrl) {
-    const matcapTex = loadMatcapTexture(matcapUrl);
-    const matcapMat = createDiamondMatcapMaterial({
-      name: oldMat.name || 'Diamond',
-      color: oldMat.color ? oldMat.color.getHex() : 0xffffff,
-      matcap: matcapTex,
-      intensity: 1.0
-    });
-    if (Array.isArray(mesh.material)) {
-      mesh.material[matIndex] = matcapMat;
-    } else {
-      mesh.material = matcapMat;
-    }
-    console.log(`[viewer] swapped "${oldMat.name || mesh.name}" to matcap (${matcapUrl})`);
-    oldMat.dispose?.();
-    return matcapMat;
-  }
-
-  /**
-   * Should this material/mesh be rendered as a matcap? Triggered when the
-   * preset or override sidecar specifies `shader: "matcap"` or simply a
-   * `matcap: "<url>"` string.
-   *
-   * @param {import('three').Material} mat
-   * @param {{ shader?: string, matcap?: string } | null} override
-   * @returns {string | null} The matcap URL to use, or null.
-   */
-  function matcapUrlFor(mat, override) {
-    if (mat?.userData?.isDiamondMatcapMaterial) {
-      // Already a matcap; no swap needed but caller can refresh the texture.
-      return typeof override?.matcap === 'string' ? override.matcap : null;
-    }
-    if (override?.shader === 'matcap' && typeof override?.matcap === 'string') {
-      return override.matcap;
-    }
-    if (typeof override?.matcap === 'string' && override.matcap.length > 0) {
-      return override.matcap;
-    }
-    return null;
-  }
-
   /**
    * Walk a loaded model and assign the appropriate envMap + envMapIntensity
    * to every material based on whether it looks like metal or a gem. Safe to
@@ -623,25 +526,6 @@ export function createScene(container) {
         (overrides && obj.name && overrides[obj.name]) ||
         null;
 
-      // Highest priority: explicit matcap request from preset/override.
-      const matcapUrl = matcapUrlFor(mat, matOverride);
-      if (matcapUrl) {
-        // Already on a matcap material with the same texture — just refresh
-        // the override and skip the swap.
-        if (
-          mat.userData?.isDiamondMatcapMaterial &&
-          uniformMatcapUrl(mat) === matcapUrl
-        ) {
-          if (matOverride) applyOverrideToMaterial(mat, matOverride, scale);
-          continue;
-        }
-        mat = swapToMatcap(obj, mat, i, matcapUrl);
-        if (Array.isArray(obj.material)) obj.material[i] = mat;
-        else obj.material = mat;
-        if (matOverride) applyOverrideToMaterial(mat, matOverride, scale);
-        continue;
-      }
-
       // Diamond / moissanite path: replace with the refraction shader.
       // Skip when there's no equirect gem map to feed it.
       if (
@@ -670,21 +554,11 @@ export function createScene(container) {
     }
   }
 
-  function uniformMatcapUrl(mat) {
-    // Cache lookup is the source of truth for which URL produced this texture.
-    const tex = mat.matcap;
-    if (!tex) return null;
-    for (const [url, cachedTex] of matcapCache.entries()) {
-      if (cachedTex === tex) return url;
-    }
-    return null;
-  }
-
   /**
    * Re-evaluate one mesh's material classes + properties given an updated
    * override entry. Used by the inspector when the user applies a preset
-   * that would change the shader (e.g. picking the matcap diamond preset
-   * over the refraction one).
+   * that would change the shader (e.g. picking the refraction-shader diamond
+   * over a stock PBR material).
    *
    * @param {import('three').Mesh} mesh
    * @param {Record<string, Record<string, unknown>>} overrides
