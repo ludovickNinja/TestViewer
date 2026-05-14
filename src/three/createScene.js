@@ -339,9 +339,9 @@ export function createScene(container) {
   }
 
   // Override-sidecar entries use the same shape as material presets, so push
-  // them through the shared applyPreset() pipeline. Anything outside its
-  // NUMERIC_PROPS / COLOR_PROPS / envMap / size-scoped allowlists is silently
-  // ignored, which keeps override files honest.
+  // them through the shared applyPreset() pipeline. Anything not whitelisted
+  // there (NUMERIC_PROPS / COLOR_PROPS / envMap routing / size-scoped scaling)
+  // is silently ignored, which keeps override files honest.
   function applyOverrideToMaterial(mat, override, scale = 1) {
     if (!override) return;
     applyPreset(mat, override, environments, scale);
