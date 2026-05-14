@@ -38,6 +38,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
 import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
 import { createDiamondMaterial, shouldUseDiamondShader } from './diamondShaderMaterial.js';
+import { applyPreset, findPreset } from './applyPreset.js';
+import materialPresets from '../data/materialPresets.json';
 
 // Mobile detection drives a few perf tradeoffs (lower pixel ratio cap, lower
 // transmission render target resolution, halved dispersion). We treat every
@@ -336,68 +338,46 @@ export function createScene(container) {
     return /diamond|gem|stone|sapphire|ruby|emerald|crystal|cz|topaz|amethyst/.test(name);
   }
 
-  // Numeric PBR props the override sidecar is allowed to set. Anything outside
-  // this list is ignored to keep override files from drifting into a free-for-
-  // all of arbitrary material mutations.
-  const OVERRIDE_NUMERIC_PROPS = [
-    'metalness',
-    'roughness',
-    'transmission',
-    'thickness',
-    'ior',
-    'dispersion',
-    'bounces',
-    'reflectivity',
-    'clearcoat',
-    'clearcoatRoughness',
-    'sheen',
-    'envMapIntensity',
-    'opacity',
-    'attenuationDistance'
-  ];
-
-  // Keys whose value is a hex color string and whose material slot is a
-  // Three.js Color (set via slot.set('#rrggbb')). Kept in sync with
-  // src/three/applyPreset.js's COLOR_PROPS.
-  const OVERRIDE_COLOR_PROPS = ['color', 'attenuationColor', 'sheenColor', 'emissive'];
-
-  // Override props authored in model-radius units. Multiplied by `scale`
-  // (= frame.radius) when applied so a sidecar saying `thickness: 0.3` reads
-  // as "0.3 of the model's radius" regardless of the GLB's export scale.
-  // Kept in sync with applyPreset.js's SIZE_SCOPED_PROPS.
-  const OVERRIDE_SIZE_SCOPED_PROPS = new Set(['thickness', 'attenuationDistance']);
-
+  // Override-sidecar entries use the same shape as material presets, so push
+  // them through the shared applyPreset() pipeline. Anything outside its
+  // NUMERIC_PROPS / COLOR_PROPS / envMap / size-scoped allowlists is silently
+  // ignored, which keeps override files honest.
   function applyOverrideToMaterial(mat, override, scale = 1) {
     if (!override) return;
-    if (override.envMap === 'metal') mat.envMap = environments.metal;
-    else if (override.envMap === 'gem') mat.envMap = environments.gem;
-    else if (override.envMap === 'none') mat.envMap = null;
+    applyPreset(mat, override, environments, scale);
+  }
 
-    for (const prop of OVERRIDE_NUMERIC_PROPS) {
-      if (typeof override[prop] === 'number' && typeof mat[prop] === 'number') {
-        mat[prop] = OVERRIDE_SIZE_SCOPED_PROPS.has(prop)
-          ? override[prop] * scale
-          : override[prop];
-      }
+  /**
+   * Pick which gem preset (`diamond` vs `moissanite`) to seed a freshly-swapped
+   * BVH diamond material with. Mirrors the matching heuristic in
+   * shouldUseDiamondShader() so the preset and the swap decision agree.
+   *
+   * @param {import('three').Material} mat
+   * @param {{ preset?: string } | null} override
+   * @param {import('three').Mesh | null} mesh
+   */
+  function pickDiamondPresetId(mat, override, mesh) {
+    if (override?.preset && findPreset(materialPresets, override.preset)) {
+      return override.preset;
     }
-    for (const prop of OVERRIDE_COLOR_PROPS) {
-      const value = override[prop];
-      if (typeof value !== 'string') continue;
-      const slot = mat[prop];
-      if (slot && typeof slot.set === 'function') slot.set(value);
-    }
-    mat.needsUpdate = true;
+    const matName = (mat?.name || '').toLowerCase();
+    const meshName = (mesh?.name || '').toLowerCase();
+    if (/moissanite/.test(matName) || /moissanite/.test(meshName)) return 'moissanite';
+    return 'diamond';
   }
 
   /**
    * Replace a material on a mesh with our custom diamond shader, preserving
-   * the original's name and color so the inspector + override sidecar still
-   * address it the same way.
+   * the original's name so the inspector + override sidecar still address it
+   * the same way. Construction values are sourced from the matching preset in
+   * materialPresets.json — never from the inbound GLB material — so the
+   * post-swap appearance matches what "Apply preset" in the inspector would
+   * produce. Per-mesh override sidecars layer on top via applyOverride below.
    *
    * @param {import('three').Mesh} mesh
    * @param {import('three').Material} oldMat
    * @param {number} matIndex - Index in mesh.material if it's an array
-   * @returns {import('three').ShaderMaterial}
+   * @returns {import('three').Material}
    */
   function swapToDiamondShader(mesh, oldMat, matIndex) {
     // The BVH ray tracer requires WebGL2 (integer samplers, inverse(mat4)
@@ -407,18 +387,24 @@ export function createScene(container) {
     // MeshPhysicalMaterial with diamond-tuned transmission instead.
     const isWebGL2 = renderer.capabilities?.isWebGL2 === true;
 
+    const presetId = pickDiamondPresetId(oldMat, null, mesh);
+    const preset = findPreset(materialPresets, presetId) || {};
+
     // Build the BVH path; createDiamondMaterial returns null if the geometry
     // can't be indexed or BVH construction throws.
     const diamondMat = isWebGL2
       ? createDiamondMaterial({
           name: oldMat.name || 'Diamond',
-          color: oldMat.color ? oldMat.color.getHex() : 0xffffff,
-          ior: typeof oldMat.ior === 'number' ? oldMat.ior : 2.6,
-          dispersion: typeof oldMat.dispersion === 'number' ? oldMat.dispersion : 0.01,
-          bounces: 3,
-          fresnel: 0.5,
+          color: typeof preset.color === 'string' ? preset.color : 0xffffff,
+          ior: preset.ior,
+          dispersion: preset.dispersion,
+          bounces: preset.bounces,
+          fresnel: preset.reflectivity,
           envMap: equirectEnvironments.gem,
-          envMapIntensity: HDRI_CONFIG.gem.intensity,
+          envMapIntensity:
+            typeof preset.envMapIntensity === 'number'
+              ? preset.envMapIntensity
+              : HDRI_CONFIG.gem.intensity,
           geometry: mesh.geometry
         })
       : null;
