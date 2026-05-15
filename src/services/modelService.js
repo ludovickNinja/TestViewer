@@ -49,6 +49,43 @@ export function readModelIdFromUrl(search = window.location.search) {
   return sanitizeModelId(raw);
 }
 
+const SHOW_VALUES = new Set(['engagement', 'band', 'all']);
+
+/**
+ * Read the `show` query parameter (engagement / band / all). Used by the
+ * viewer to pick which part of a multi-part GLB is initially visible.
+ * Returns null when the param is missing or invalid so callers can fall back
+ * to their own default.
+ *
+ * @param {string} [search] - Defaults to `window.location.search`.
+ * @returns {'engagement' | 'band' | 'all' | null}
+ */
+export function readShowFromUrl(search = window.location.search) {
+  const params = new URLSearchParams(search);
+  const raw = params.get('show');
+  if (!raw) return null;
+  const lower = raw.trim().toLowerCase();
+  // Accept a couple of friendlier aliases.
+  const normalized =
+    lower === 'ring' ? 'engagement' :
+    lower === 'matchingband' || lower === 'wedding' ? 'band' :
+    lower;
+  return SHOW_VALUES.has(normalized) ? /** @type {'engagement'|'band'|'all'} */ (normalized) : null;
+}
+
+/**
+ * Mirror the current part selection into the URL so deep links share state.
+ * "all" (the default) is written as a removed param to keep links clean.
+ *
+ * @param {'engagement' | 'band' | 'all'} value
+ */
+export function writeShowToUrl(value) {
+  const url = new URL(window.location.href);
+  if (value === 'all') url.searchParams.delete('show');
+  else url.searchParams.set('show', value);
+  window.history.replaceState(null, '', url);
+}
+
 /**
  * Return the input ID if it's safe to use as a filename, otherwise null.
  * @param {string} raw

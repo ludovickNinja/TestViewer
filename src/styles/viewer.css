@@ -259,6 +259,74 @@ body:has(.nc-app) {
   height: 18px;
 }
 
+/* ---------- Part selector (engagement ring / matching band) ---------- */
+
+.nc-stage__part-selector {
+  position: absolute;
+  left: 50%;
+  bottom: var(--space-5);
+  transform: translateX(-50%);
+  z-index: 6;
+  pointer-events: none;
+}
+
+.nc-stage__part-selector:empty {
+  display: none;
+}
+
+.nc-part-selector {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 6px 6px 14px;
+  background: rgba(19, 19, 22, 0.7);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: var(--color-muted);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.nc-part-selector__label {
+  color: var(--color-muted);
+}
+
+.nc-part-selector__select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-text);
+  font: inherit;
+  letter-spacing: 0.08em;
+  text-transform: none;
+  padding: 6px 28px 6px 12px;
+  cursor: pointer;
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%23a0a0a8' d='M7 10l5 5 5-5z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 14px 14px;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.nc-part-selector__select:hover,
+.nc-part-selector__select:focus-visible {
+  outline: none;
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.nc-part-selector__select option {
+  background: #131316;
+  color: var(--color-text);
+}
+
 /* ---------- Thumbnail strip ---------- */
 
 .nc-app__thumbs {
@@ -367,6 +435,15 @@ body:has(.nc-app) {
     bottom: var(--space-3);
     right: 50%;
     transform: translateX(50%);
+  }
+
+  .nc-stage__part-selector {
+    /* Leave room for the bottom-center controls on mobile. */
+    bottom: calc(var(--space-3) + 62px);
+  }
+
+  .nc-part-selector {
+    font-size: 10px;
   }
 
   .nc-app__thumbs {

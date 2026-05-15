@@ -25,6 +25,33 @@ everything just works on first load — no override sidecar required.
 | **Gem env map** | mesh OR material name contains `diamond`, `gem`, `stone`, `sapphire`, `ruby`, `emerald`, `crystal`, `cz`, `topaz`, or `amethyst` |
 | **Metal env map** | anything else |
 
+## Engagement ring + matching band in one file
+
+When a single GLB contains both the engagement ring and its matching band,
+the viewer offers a small "View" dropdown so the customer can flip between
+**Engagement Ring**, **Matching Band**, and **Show Both**. The selection is
+also reflected in the URL — `?show=engagement`, `?show=band`, or `?show=all`
+(default) — so you can deep-link to a specific part.
+
+### How to author it in Rhino
+
+Use two top-level **layers** in Rhino, one per part. Rhino's glTF exporter
+turns each top-level layer into a named node in the GLB, which is exactly
+what the viewer looks for.
+
+| Part | Top-level Rhino layer name | URL value |
+| --- | --- | --- |
+| Engagement ring | `EngagementRing` (or anything containing `engagement` / `ring`) | `engagement` |
+| Matching band | `MatchingBand` (or anything containing `band` / `wedding`) | `band` |
+
+Inside each layer, keep the same mesh + material naming used everywhere else
+(`Diamond_Center`, `Shank`, `Prongs`, `Metal_Yellow_Gold_14k`, …). The viewer
+treats the two layers as ordinary geometry — only the top-level grouping is
+used to drive the show/hide.
+
+If only one of the two layers is present, the dropdown is hidden and the
+URL param is ignored.
+
 ## Rules of thumb
 
 - Match either slot — mesh name **or** material name. The viewer checks both.

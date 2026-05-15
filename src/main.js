@@ -23,6 +23,7 @@ import { createLoadingOverlay } from './components/LoadingOverlay.js';
 import { createErrorState } from './components/ErrorState.js';
 import { createThumbnailStrip } from './components/ThumbnailStrip.js';
 import { createViewerControls } from './components/ViewerControls.js';
+import { createPartSelector } from './components/PartSelector.js';
 
 import { createScene } from './three/createScene.js';
 import { loadModel } from './three/loadModel.js';
@@ -35,7 +36,14 @@ import {
 } from './three/cameraViews.js';
 import { disposeScene } from './three/disposeScene.js';
 import { createInspector } from './three/inspector.js';
-import { fetchMaterialOverrides, readModelIdFromUrl, resolveModel } from './services/modelService.js';
+import { applyPartVisibility, detectRingParts } from './three/ringParts.js';
+import {
+  fetchMaterialOverrides,
+  readModelIdFromUrl,
+  readShowFromUrl,
+  resolveModel,
+  writeShowToUrl
+} from './services/modelService.js';
 
 const DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
 
@@ -175,6 +183,32 @@ function mount() {
       fitCameraToObject(viewer.camera, viewer.controls, frame);
       thumbStrip.setActive(DEFAULT_VIEW);
       loading.hide();
+
+      // If the GLB exposes both an engagement-ring group and a matching-band
+      // group, show a small dropdown that lets the customer pick which part
+      // is visible. The ?show=engagement|band|all URL param seeds the initial
+      // choice; toggling the dropdown mirrors the choice back into the URL so
+      // a shared link reproduces the same state.
+      const parts = detectRingParts(root);
+      if (parts.engagement && parts.band) {
+        const initial = readShowFromUrl() ?? 'all';
+        applyPartVisibility(parts, initial);
+        viewer.requestRender();
+        const selector = createPartSelector({
+          initial,
+          onChange: (value) => {
+            applyPartVisibility(parts, value);
+            writeShowToUrl(value);
+            viewer.requestRender();
+          }
+        });
+        layout.partSelectorSlot.appendChild(selector.element);
+      } else if (readShowFromUrl()) {
+        // Only one (or neither) part is named, so the ?show= param has nothing
+        // to act on. Clear it so the URL bar reflects what's actually visible.
+        writeShowToUrl('all');
+      }
+
       inspector?.attach(root, {
         modelId: id,
         initialOverrides: overrides,
