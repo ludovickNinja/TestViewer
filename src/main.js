@@ -11,7 +11,9 @@
 //      not found." error.
 //   7. Cleans up GPU resources before the page unloads.
 //
-// There is intentionally NO download button anywhere in the UI.
+// The bottom strip is flanked by two download buttons: the left one captures
+// the current view, the right one captures all 4 preset angles. Both produce
+// 1:1 square JPEGs.
 // ----------------------------------------------------------------------------
 
 import './styles/base.css';
@@ -22,6 +24,7 @@ import { createViewerLayout } from './components/ViewerLayout.js';
 import { createLoadingOverlay } from './components/LoadingOverlay.js';
 import { createErrorState } from './components/ErrorState.js';
 import { createThumbnailStrip } from './components/ThumbnailStrip.js';
+import { createThumbnailActions } from './components/ThumbnailActions.js';
 import { createViewerControls } from './components/ViewerControls.js';
 
 import { createScene } from './three/createScene.js';
@@ -35,7 +38,12 @@ import {
 } from './three/cameraViews.js';
 import { disposeScene } from './three/disposeScene.js';
 import { createInspector } from './three/inspector.js';
-import { generateAngleThumbnails } from './three/generateAngleThumbnails.js';
+import {
+  captureAllAngles,
+  captureCurrentView,
+  generateAngleThumbnails
+} from './three/generateAngleThumbnails.js';
+import { triggerDownload } from './three/triggerDownload.js';
 import { fetchMaterialOverrides, readModelIdFromUrl, resolveModel } from './services/modelService.js';
 
 const DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
@@ -101,7 +109,38 @@ function mount() {
     thumbnails: resolved.thumbnails,
     onSelect: (viewId) => void goToView(viewId)
   });
+
+  const thumbActions = createThumbnailActions({
+    onScreenshot: () => {
+      if (!activeFrame) return;
+      try {
+        const dataUrl = captureCurrentView(viewer);
+        triggerDownload(dataUrl, `${id}-view.jpg`);
+      } catch (err) {
+        console.error('[viewer] screenshot capture failed', err);
+      }
+    },
+    onDownloadAll: () => {
+      if (!activeFrame) return;
+      try {
+        const captures = captureAllAngles(viewer, activeFrame);
+        // Stagger so the browser shows its "allow multiple downloads"
+        // confirmation once and then accepts the rest as a batch instead of
+        // collapsing all 4 anchor clicks into a single download.
+        CAMERA_VIEWS.forEach((view, i) => {
+          const url = captures[view.id];
+          if (!url) return;
+          setTimeout(() => triggerDownload(url, `${id}-${view.id}.jpg`), i * 250);
+        });
+      } catch (err) {
+        console.error('[viewer] download-all capture failed', err);
+      }
+    }
+  });
+
+  layout.thumbnailsSlot.appendChild(thumbActions.leading);
   layout.thumbnailsSlot.appendChild(thumbStrip.element);
+  layout.thumbnailsSlot.appendChild(thumbActions.trailing);
   thumbStrip.setActive(DEFAULT_VIEW);
 
   // Some browsers (mainly older Safari) use webkit-prefixed fullscreen APIs.
@@ -175,6 +214,7 @@ function mount() {
       const envsApplied = viewer.applyMaterialEnvironments(root, overrides, frame.radius);
       fitCameraToObject(viewer.camera, viewer.controls, frame);
       thumbStrip.setActive(DEFAULT_VIEW);
+      thumbActions.setEnabled(true);
       loading.hide();
       inspector?.attach(root, {
         modelId: id,
