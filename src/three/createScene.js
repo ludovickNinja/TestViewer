@@ -101,7 +101,7 @@ export function createScene(container) {
   };
 
   const CAMERA_CONFIG = {
-    fov: 35,                       // Field of view in degrees (lower = more zoomed in)
+    fov: 10,                       // Field of view in degrees (lower = more zoomed in)
     initialPosition: [0, 0, 3],    // Starting camera position [x, y, z]
     nearPlane: 0.01,               // Objects closer than this won't render
     farPlane: 100,                 // Objects farther than this won't render
