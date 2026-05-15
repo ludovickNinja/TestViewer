@@ -35,6 +35,7 @@ import {
 } from './three/cameraViews.js';
 import { disposeScene } from './three/disposeScene.js';
 import { createInspector } from './three/inspector.js';
+import { generateAngleThumbnails } from './three/generateAngleThumbnails.js';
 import { fetchMaterialOverrides, readModelIdFromUrl, resolveModel } from './services/modelService.js';
 
 const DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
@@ -171,7 +172,7 @@ function mount() {
       // attenuationDistance) are scaled by the model's bounding radius so
       // they don't go saturated/uniform on millimetre-scale exports or
       // diluted on metre-scale ones.
-      void viewer.applyMaterialEnvironments(root, overrides, frame.radius);
+      const envsApplied = viewer.applyMaterialEnvironments(root, overrides, frame.radius);
       fitCameraToObject(viewer.camera, viewer.controls, frame);
       thumbStrip.setActive(DEFAULT_VIEW);
       loading.hide();
@@ -180,6 +181,24 @@ function mount() {
         initialOverrides: overrides,
         scale: frame.radius
       });
+
+      // Once the HDR environments have been resolved onto every material,
+      // render the model from each preset angle and use the resulting JPEG
+      // data URLs as the bottom-strip thumbnails. This replaces the F/S/T/P
+      // placeholders (or any pre-rendered files) with a live snapshot of
+      // the actual loaded model — no images in the repo required.
+      envsApplied
+        .then(() => {
+          const thumbs = generateAngleThumbnails(viewer, frame);
+          for (const view of CAMERA_VIEWS) {
+            const url = thumbs[view.id];
+            if (url) thumbStrip.setThumbnail(view.id, url);
+          }
+          viewer.requestRender();
+        })
+        .catch((err) => {
+          console.warn('[viewer] angle thumbnail generation failed', err);
+        });
     })
     .catch((err) => {
       // Log details for us, but show only a friendly message to the customer.

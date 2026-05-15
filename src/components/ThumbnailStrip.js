@@ -110,5 +110,38 @@ export function createThumbnailStrip(options) {
     });
   }
 
-  return { element: el, setActive };
+  /**
+   * Swap in a freshly generated image for one of the preset views. Used by
+   * the viewer to replace the file-based or placeholder thumbnail with a
+   * live render of the loaded model.
+   *
+   * @param {ThumbnailDefinition['id']} id
+   * @param {string} imageUrl - Any valid <img> src (data URL, blob URL, http).
+   */
+  function setThumbnail(id, imageUrl) {
+    const btn = buttons.get(id);
+    if (!btn || !imageUrl) return;
+
+    const placeholder = btn.querySelector('.nc-thumb__placeholder');
+    const existingImg = btn.querySelector('.nc-thumb__img');
+    if (existingImg) existingImg.remove();
+
+    const img = document.createElement('img');
+    img.className = 'nc-thumb__img';
+    img.alt = '';
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.src = imageUrl;
+    img.addEventListener('load', () => {
+      img.classList.add('is-loaded');
+      placeholder?.classList.remove('is-visible');
+    });
+    img.addEventListener('error', () => {
+      img.remove();
+      placeholder?.classList.add('is-visible');
+    });
+    btn.insertBefore(img, btn.firstChild);
+  }
+
+  return { element: el, setActive, setThumbnail };
 }
