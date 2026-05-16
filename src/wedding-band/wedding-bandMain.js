@@ -38,6 +38,7 @@ import {
   hasKarat,
   computePrice
 } from '../pricing/pricingService.js';
+import { ensureFreshSpot, loadSpot } from '../pricing/spotPriceService.js';
 import { bandVolumeM3, massGrams } from '../pricing/computeBandWeight.js';
 
 const DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
@@ -124,6 +125,10 @@ function mount() {
 
   // ---- Pricing ----
   const pricing = loadPricing();
+  // Spot snapshot starts at whatever's in localStorage (could be null on
+  // first visit). We kick off an async refresh below and re-run pricing
+  // once that resolves — the page never blocks on the network.
+  let spot = loadSpot();
   let bandUI = null;  // set once createWeddingBandUI runs below
 
   function updatePricing(params) {
@@ -133,12 +138,18 @@ function mount() {
     const key = pricingKeyFor(params.metalId, params.karat);
     const entry = pricing.metals[key];
     if (!entry) {
-      bandUI.setPricing({ weightGrams: 0, breakdown: null });
+      bandUI.setPricing({ weightGrams: 0, breakdown: null, spotSourceLabel: spotSourceLabel() });
       return;
     }
     const weightGrams = massGrams(volume, entry.densityGPerCc);
-    const breakdown = computePrice(pricing, key, weightGrams);
-    bandUI.setPricing({ weightGrams, breakdown });
+    const breakdown = computePrice(pricing, spot, key, weightGrams);
+    bandUI.setPricing({ weightGrams, breakdown, spotSourceLabel: spotSourceLabel() });
+  }
+
+  function spotSourceLabel() {
+    if (!spot) return 'Spot: bundled fallback';
+    const stamp = new Date(spot.fetchedAt).toLocaleString();
+    return `Spot: ${spot.source} · ${stamp}`;
   }
 
   function refit() {
@@ -190,6 +201,17 @@ function mount() {
     onResetView: () => refit()
   });
   updatePricing(initialParams);
+
+  // Refresh the spot snapshot in the background; rerun the pricing once it
+  // resolves. If the fetch fails we keep whatever was already in `spot`
+  // (cached snapshot, or null → fallback prices). Errors are swallowed
+  // inside ensureFreshSpot.
+  ensureFreshSpot().then((fresh) => {
+    if (fresh) {
+      spot = fresh;
+      updatePricing(bandUI.getParams());
+    }
+  });
 
   // ---- Resize ----
   const resize = () => {

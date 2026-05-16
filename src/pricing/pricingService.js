@@ -6,21 +6,42 @@
 // authoring surface for the overrides; the wedding-band page is the only
 // consumer right now.
 //
-// Storage is browser-local — survives reload, doesn't sync across devices.
-// Switch to a server-backed store if multi-device parity becomes a
-// requirement.
+// $/g for a given metal is *derived* at quote time:
+//   spotPerG  = spotPerOz / 31.1034768
+//   pricePerG = spotPerG * purityFraction + premiumPerGramUSD
+// The spot prices come from spotPriceService.js (Stooq, cached daily); the
+// premium and other knobs come from the merged config below. Storage is
+// browser-local — survives reload, doesn't sync across devices.
 // ----------------------------------------------------------------------------
 
 import defaults from '../data/pricingConfig.json';
+import { perOzToPerGram } from './spotPriceService.js';
 
 const STORAGE_KEY = 'noam.carver.pricing.v1';
 
 /**
+ * @typedef {{
+ *   label: string,
+ *   densityGPerCc: number,
+ *   spotMetal: 'gold' | 'platinum' | 'silver',
+ *   purityFraction: number,
+ *   premiumPerGramUSD: number
+ * }} MetalEntry
+ *
+ * @typedef {{
+ *   metals: Record<string, MetalEntry>,
+ *   fallbackSpot: { goldPerOzUSD: number, silverPerOzUSD: number, platinumPerOzUSD: number },
+ *   laborUSD: number,
+ *   markupPct: number
+ * }} PricingConfig
+ */
+
+/**
  * Build the merged pricing object: defaults overlaid with any localStorage
  * overrides. Only known metal IDs from the defaults are merged — unknown
- * keys in storage are ignored (forward compatibility / cleanup safety).
+ * keys in storage are ignored.
  *
- * @returns {{ metals: Record<string, { label: string, densityGPerCc: number, pricePerGramUSD: number }>, laborUSD: number, markupPct: number }}
+ * @returns {PricingConfig}
  */
 export function loadPricing() {
   const merged = clone(defaults);
@@ -34,9 +55,11 @@ export function loadPricing() {
       const override = raw.metals[id];
       if (!override || typeof override !== 'object') continue;
       const d = Number(override.densityGPerCc);
-      const p = Number(override.pricePerGramUSD);
+      const p = Number(override.premiumPerGramUSD);
       if (Number.isFinite(d) && d > 0) merged.metals[id].densityGPerCc = d;
-      if (Number.isFinite(p) && p >= 0) merged.metals[id].pricePerGramUSD = p;
+      if (Number.isFinite(p) && p >= 0) merged.metals[id].premiumPerGramUSD = p;
+      // purityFraction and spotMetal are intentionally NOT overridable —
+      // they describe the alloy, not pricing policy.
     }
   }
   if (Number.isFinite(Number(raw.laborUSD)) && Number(raw.laborUSD) >= 0) {
@@ -49,9 +72,8 @@ export function loadPricing() {
 }
 
 /**
- * Persist the full pricing snapshot to localStorage. Caller is expected to
- * pass an object with the same shape as `loadPricing()` returns.
- * @param {ReturnType<typeof loadPricing>} pricing
+ * Persist the full pricing snapshot to localStorage.
+ * @param {PricingConfig} pricing
  */
 export function savePricing(pricing) {
   try {
@@ -74,8 +96,8 @@ export function resetPricing() {
 
 /**
  * Map a (materialId, karat) selection from the wedding-band UI to a key in
- * the pricing config. Karat is ignored for non-gold metals (platinum, silver)
- * since those don't have karats.
+ * the pricing config. Karat is ignored for non-gold metals (platinum,
+ * silver) since those don't have karats.
  *
  * @param {string} materialId  one of: 'yellow-gold', 'white-gold', 'rose-gold', 'platinum', 'silver'
  * @param {string|null} karat   one of: '10k', '14k', '18k', or null for non-gold
@@ -96,20 +118,56 @@ export function hasKarat(materialId) {
 }
 
 /**
- * Compute the price breakdown for a band of `weightGrams` made of the metal
- * identified by `pricingKey`. Caller is responsible for passing a pricing
- * snapshot (so the admin page can preview unsaved changes by re-loading
- * locally).
+ * Resolve the per-oz spot for a metal entry from a snapshot, falling back
+ * to the bundled defaults if no snapshot is available.
  *
- * @param {ReturnType<typeof loadPricing>} pricing
+ * @param {MetalEntry} entry
+ * @param {import('./spotPriceService.js').SpotSnapshot | null} snapshot
+ * @param {PricingConfig} pricing
+ * @returns {number}
+ */
+export function spotPerOzFor(entry, snapshot, pricing) {
+  const key = entry.spotMetal;
+  if (snapshot) {
+    if (key === 'gold') return snapshot.goldPerOzUSD;
+    if (key === 'platinum') return snapshot.platinumPerOzUSD;
+    if (key === 'silver') return snapshot.silverPerOzUSD;
+  }
+  if (key === 'gold') return pricing.fallbackSpot.goldPerOzUSD;
+  if (key === 'platinum') return pricing.fallbackSpot.platinumPerOzUSD;
+  if (key === 'silver') return pricing.fallbackSpot.silverPerOzUSD;
+  return 0;
+}
+
+/**
+ * Effective $/g for a metal at the given spot prices.
+ *   $/g = spotPerG * purityFraction + premium
+ *
+ * @param {MetalEntry} entry
+ * @param {import('./spotPriceService.js').SpotSnapshot | null} snapshot
+ * @param {PricingConfig} pricing
+ * @returns {number}
+ */
+export function pricePerGramFor(entry, snapshot, pricing) {
+  const spotPerG = perOzToPerGram(spotPerOzFor(entry, snapshot, pricing));
+  return spotPerG * entry.purityFraction + entry.premiumPerGramUSD;
+}
+
+/**
+ * Compute the price breakdown for a band of `weightGrams` made of the metal
+ * identified by `pricingKey`.
+ *
+ * @param {PricingConfig} pricing
+ * @param {import('./spotPriceService.js').SpotSnapshot | null} snapshot
  * @param {string} pricingKey
  * @param {number} weightGrams
- * @returns {{ metalUSD: number, laborUSD: number, markupUSD: number, totalUSD: number } | null}
+ * @returns {{ metalUSD: number, laborUSD: number, markupUSD: number, totalUSD: number, pricePerGramUSD: number } | null}
  */
-export function computePrice(pricing, pricingKey, weightGrams) {
-  const metal = pricing.metals[pricingKey];
-  if (!metal) return null;
-  const metalUSD = weightGrams * metal.pricePerGramUSD;
+export function computePrice(pricing, snapshot, pricingKey, weightGrams) {
+  const entry = pricing.metals[pricingKey];
+  if (!entry) return null;
+  const pricePerGramUSD = pricePerGramFor(entry, snapshot, pricing);
+  const metalUSD = weightGrams * pricePerGramUSD;
   const laborUSD = pricing.laborUSD;
   const subtotal = metalUSD + laborUSD;
   const markupUSD = subtotal * (pricing.markupPct / 100);
@@ -117,7 +175,8 @@ export function computePrice(pricing, pricingKey, weightGrams) {
     metalUSD,
     laborUSD,
     markupUSD,
-    totalUSD: subtotal + markupUSD
+    totalUSD: subtotal + markupUSD,
+    pricePerGramUSD
   };
 }
 

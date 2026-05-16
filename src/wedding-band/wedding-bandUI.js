@@ -115,6 +115,10 @@ export function createWeddingBandUI(mountPoint, options) {
           <dd data-role="price-weight">—</dd>
         </div>
         <div class="wedding-band-pricing__row">
+          <dt>$/g</dt>
+          <dd data-role="price-pergram">—</dd>
+        </div>
+        <div class="wedding-band-pricing__row">
           <dt>Metal</dt>
           <dd data-role="price-metal">—</dd>
         </div>
@@ -131,6 +135,7 @@ export function createWeddingBandUI(mountPoint, options) {
           <dd data-role="price-total">—</dd>
         </div>
       </dl>
+      <p class="wedding-band-pricing__source" data-role="price-source">Spot: bundled fallback</p>
       <a class="wedding-band-pricing__admin" href="../admin/">Edit pricing &rarr;</a>
     </section>
   `;
@@ -260,20 +265,26 @@ export function createWeddingBandUI(mountPoint, options) {
   });
 
   // ---- Pricing readout ----
-  const priceWeight = panel.querySelector('[data-role="price-weight"]');
-  const priceMetal  = panel.querySelector('[data-role="price-metal"]');
-  const priceLabor  = panel.querySelector('[data-role="price-labor"]');
-  const priceMarkup = panel.querySelector('[data-role="price-markup"]');
-  const priceTotal  = panel.querySelector('[data-role="price-total"]');
+  const priceWeight  = panel.querySelector('[data-role="price-weight"]');
+  const pricePerGram = panel.querySelector('[data-role="price-pergram"]');
+  const priceMetal   = panel.querySelector('[data-role="price-metal"]');
+  const priceLabor   = panel.querySelector('[data-role="price-labor"]');
+  const priceMarkup  = panel.querySelector('[data-role="price-markup"]');
+  const priceTotal   = panel.querySelector('[data-role="price-total"]');
+  const priceSource  = panel.querySelector('[data-role="price-source"]');
 
   /**
-   * Update the pricing readout. Caller passes either a complete breakdown or
-   * null (e.g. when no pricing entry matches the current metal+karat).
-   * @param {{weightGrams: number, breakdown: {metalUSD:number, laborUSD:number, markupUSD:number, totalUSD:number} | null} | null} info
+   * Update the pricing readout.
+   * @param {{
+   *   weightGrams: number,
+   *   breakdown: {metalUSD:number, laborUSD:number, markupUSD:number, totalUSD:number, pricePerGramUSD:number} | null,
+   *   spotSourceLabel?: string
+   * } | null} info
    */
   function setPricing(info) {
     if (!info) {
       priceWeight.textContent = '—';
+      pricePerGram.textContent = '—';
       priceMetal.textContent = '—';
       priceLabor.textContent = '—';
       priceMarkup.textContent = '—';
@@ -282,16 +293,19 @@ export function createWeddingBandUI(mountPoint, options) {
     }
     priceWeight.textContent = `${info.weightGrams.toFixed(2)} g`;
     if (info.breakdown) {
-      priceMetal.textContent = formatUSD(info.breakdown.metalUSD);
-      priceLabor.textContent = formatUSD(info.breakdown.laborUSD);
+      pricePerGram.textContent = formatUSD(info.breakdown.pricePerGramUSD);
+      priceMetal.textContent  = formatUSD(info.breakdown.metalUSD);
+      priceLabor.textContent  = formatUSD(info.breakdown.laborUSD);
       priceMarkup.textContent = formatUSD(info.breakdown.markupUSD);
-      priceTotal.textContent = formatUSD(info.breakdown.totalUSD);
+      priceTotal.textContent  = formatUSD(info.breakdown.totalUSD);
     } else {
+      pricePerGram.textContent = '—';
       priceMetal.textContent = '—';
       priceLabor.textContent = '—';
       priceMarkup.textContent = '—';
       priceTotal.textContent = '—';
     }
+    if (info.spotSourceLabel) priceSource.textContent = info.spotSourceLabel;
   }
 
   return {
