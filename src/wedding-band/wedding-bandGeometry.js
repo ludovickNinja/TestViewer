@@ -37,6 +37,16 @@ export function ringSizeToInsideRadiusM(diameterMm) {
 const EDGE_BEVEL_DEFAULT_MM = 0.08;
 
 /**
+ * Comfort-fit relief depth at the band edges (mm). When comfortFit is on,
+ * the entire inside surface is replaced with a single concave arc that's
+ * closest to the finger at the centre of the band width and recedes by this
+ * many millimetres at each side face — so only a narrow strip in the middle
+ * of the inside contacts the finger, matching how real comfort-fit bands
+ * are milled.
+ */
+const COMFORT_DEPTH_DEFAULT_MM = 0.25;
+
+/**
  * Build the cross-section profile points for a wedding band.
  *
  * @param {{
@@ -47,9 +57,9 @@ const EDGE_BEVEL_DEFAULT_MM = 0.08;
  *   comfortFit: boolean,
  *   opts?: {
  *     domeHeight?: number,      // mm; default 0.15 * thickness
- *     comfortChamfer?: number,  // mm; default 0.18, clamped to fit
- *     edgeBevel?: number,       // mm; default 0.08, applied to every corner
- *     arcSegments?: number      // samples per arc; default 16
+ *     comfortDepth?: number,    // mm; default 0.25, clamped to fit
+ *     edgeBevel?: number,       // mm; default 0.08, applied to every outer corner
+ *     arcSegments?: number      // samples per quarter arc; default 16
  *   }
  * }} params
  * @returns {Vector2[]} closed polyline (first point === last point)
@@ -80,16 +90,36 @@ export function buildBandProfile(params) {
   const maxCornerR = Math.min(hW * 0.49, thicknessM * 0.4);
   const clampR = (r) => Math.max(0, Math.min(r, maxCornerR));
 
-  // Edge bevel — applied to every outer corner unconditionally, and folded
-  // into the inner-corner radius so the inner edges smooth even when
-  // comfortFit is off.
+  // Edge bevel — applied to every outer corner unconditionally, and also to
+  // the inner corners when comfortFit is off so the inner edges still catch
+  // a highlight.
   const b = clampR((opts.edgeBevel ?? EDGE_BEVEL_DEFAULT_MM) * MM_TO_M);
 
-  // Comfort fit gives a larger inner-edge chamfer than the edge bevel; when
-  // comfortFit is on we use whichever is bigger, when it's off the inner
-  // edges still get the bevel.
-  const cComfort = clampR((opts.comfortChamfer ?? 0.18) * MM_TO_M);
-  const innerR = comfortFit && cComfort > 0 ? Math.max(cComfort, b) : b;
+  // Comfort fit. The relief depth is how far the inside surface recedes from
+  // the finger at the band's side faces — at the centre of the width the
+  // inside still sits at iR. Clamped so the arc can never punch out through
+  // the outer surface (≤ 0.5 * thickness) or vanish at extreme widths
+  // (≤ 0.8 * half-width).
+  const comfortDepth = comfortFit
+    ? Math.max(
+        0,
+        Math.min(
+          (opts.comfortDepth ?? COMFORT_DEPTH_DEFAULT_MM) * MM_TO_M,
+          thicknessM * 0.5,
+          hW * 0.8
+        )
+      )
+    : 0;
+  const useComfortArc = comfortDepth > 1e-6;
+
+  // Inner-corner edge bevel: only used when there's no comfort arc, because
+  // the arc meets the side faces directly at (iR + comfortDepth, ±hW).
+  const innerR = useComfortArc ? 0 : b;
+
+  // Inner-end X of the top/bottom faces. With the comfort arc this is the
+  // arc's endpoint (recessed by comfortDepth); without it it's the start of
+  // the inner-corner bevel (iR + b) or the sharp inner corner (iR).
+  const innerEndX = useComfortArc ? iR + comfortDepth : iR + innerR;
 
   // Clamp the dome height; bail out to flat outer if the bulge is negligible.
   let d = (opts.domeHeight ?? 0.15 * thicknessMm) * MM_TO_M;
@@ -110,8 +140,8 @@ export function buildBandProfile(params) {
   };
 
   // Start of the bottom face — inner-bottom of the inner edge (after the
-  // inner chamfer/bevel arc that we emit at the very end).
-  pts.push(new Vector2(iR + innerR, -hW));
+  // inner chamfer/bevel arc or comfort arc that we emit at the very end).
+  pts.push(new Vector2(innerEndX, -hW));
 
   // Outer-bottom edge: quarter arc from (oR - b, -hW) up to (oR, -hW + b),
   // tangent to the bottom face on one end and to the outer surface on the
@@ -146,27 +176,47 @@ export function buildBandProfile(params) {
     pts.push(new Vector2(oR, hW));
   }
 
-  // Start of the top face — inner-top of the inner edge (innerR == 0 yields
-  // a sharp inner corner; with the default edge bevel this never happens).
-  pts.push(new Vector2(iR + innerR, hW));
+  // Start of the top face — inner-top of the inner profile. With comfortFit
+  // on this is the upper endpoint of the comfort arc (recessed). With
+  // comfortFit off and innerR > 0 this is the start of the top inner-corner
+  // bevel. With both off it's a sharp inner corner.
+  pts.push(new Vector2(innerEndX, hW));
 
-  if (innerR > 0) {
-    // Quarter arc at the top inner corner — center (iR + innerR, hW - innerR).
-    // Sweeps from phi=pi/2 (= (iR+innerR, +hW), already in pts) to
-    // phi=pi (= (iR, hW-innerR)). Emit i=1..arcSegments so the arc end point
-    // (iR, hW-innerR) becomes the start of the straight inner segment.
+  if (useComfortArc) {
+    // Single concave arc spanning the entire inside, from (iR + comfortDepth, +hW)
+    // through (iR, 0) — closest point to the finger — to (iR + comfortDepth, -hW).
+    // The arc centre lies on Y=0 in the band material at X = iR + R, where R
+    // is solved so the arc passes through all three points:
+    //   R = (comfortDepth² + hW²) / (2 · comfortDepth)
+    // The upper endpoint sits at angle `delta` from the centre's +X axis,
+    // where cos(delta) = (comfortDepth - R)/R, sin(delta) = hW/R — i.e. delta
+    // is in (π/2, π). Sweep CCW from delta past π (the (iR, 0) point) to
+    // 2π - delta. Emit i=1..samples-1; the closing append below provides the
+    // lower endpoint so we don't duplicate pts[0].
+    const R = (comfortDepth * comfortDepth + hW * hW) / (2 * comfortDepth);
+    const cx = iR + R;
+    const delta = Math.atan2(hW, comfortDepth - R);
+    const sweep = 2 * (Math.PI - delta);
+    // Keep ~arcSegments samples per quarter-circle of sweep so a deep comfort
+    // arc gets proportionally more vertices than a shallow one.
+    const samples = Math.max(arcSegments, Math.ceil(arcSegments * sweep / (Math.PI / 2)));
+    for (let i = 1; i < samples; i++) {
+      const phi = delta + sweep * (i / samples);
+      pts.push(new Vector2(cx + R * Math.cos(phi), R * Math.sin(phi)));
+    }
+  } else if (innerR > 0) {
+    // No comfort arc: emit the small inner-corner bevels and a straight
+    // inner face between them. Top corner: center (iR + innerR, hW - innerR),
+    // sweep phi=π/2 → π. Straight segment down to (iR, -hW + innerR). Bottom
+    // corner: center (iR + innerR, -hW + innerR), sweep phi=π → 3π/2; emit
+    // i=1..arcSegments-1 so the closing append handles pts[0].
     const cxTop = iR + innerR;
     const cyTop = hW - innerR;
     for (let i = 1; i <= arcSegments; i++) {
       const phi = Math.PI / 2 + (Math.PI / 2) * (i / arcSegments);
       pts.push(new Vector2(cxTop + innerR * Math.cos(phi), cyTop + innerR * Math.sin(phi)));
     }
-    // Straight inner segment down to the start of the bottom inner arc.
     pts.push(new Vector2(iR, -hW + innerR));
-    // Quarter arc at the bottom inner corner — center (iR + innerR, -hW + innerR).
-    // Sweeps phi=pi to phi=3pi/2 (= (iR+innerR, -hW), which is pts[0]).
-    // Emit i=1..arcSegments-1 so we don't duplicate pts[0]; the explicit
-    // closing append below handles that endpoint.
     const cxBot = iR + innerR;
     const cyBot = -hW + innerR;
     for (let i = 1; i < arcSegments; i++) {
@@ -174,9 +224,8 @@ export function buildBandProfile(params) {
       pts.push(new Vector2(cxBot + innerR * Math.cos(phi), cyBot + innerR * Math.sin(phi)));
     }
   }
-  // When innerR === 0 the inner edge is straight from (iR, +hW) down to
-  // (iR, -hW); the closing append below provides the bottom endpoint, so we
-  // don't emit it here.
+  // With both options off the inner edge is straight from (iR, +hW) down to
+  // (iR, -hW); the closing append below provides the bottom endpoint.
 
   // Close the polyline so LatheGeometry produces a sealed cross-section.
   pts.push(pts[0].clone());
