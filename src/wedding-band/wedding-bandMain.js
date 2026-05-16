@@ -74,6 +74,11 @@ function mount() {
   };
 
   // ---- Persistent mesh: rebuild geometry & swap material in place ----
+  // The mesh is built synchronously but kept hidden until the HDR
+  // environments finish loading. A pure-metal material rendered before
+  // `scene.environment` is assigned has nothing but the direct lights to
+  // shade against, which on metals reads as almost black — without this
+  // gate the band would flash dark for one or two frames on first paint.
   const initialGold = findGoldById(initialParams.goldId);
   const mesh = new Mesh(
     geometryForParams(initialParams),
@@ -83,6 +88,7 @@ function mount() {
   // the scene's Z axis. With the camera looking roughly down +Z the band
   // presents a clear three-quarter view of its inner hole and outer surface.
   mesh.rotation.x = Math.PI / 2;
+  mesh.visible = false;
   viewer.scene.add(mesh);
 
   let lastGoldId = initialParams.goldId;
@@ -98,7 +104,14 @@ function mount() {
     viewer.requestRender();
   }
 
-  refit();
+  // Wait for the HDR environments before revealing the mesh. envMapsReady
+  // resolves successfully even if the HDR load fails — in that case the
+  // band still appears (lit only by the direct lights), which is preferable
+  // to leaving the user staring at an empty stage forever.
+  viewer.envMapsReady.then(() => {
+    mesh.visible = true;
+    refit();
+  });
 
   function rebuild(params) {
     // Geometry: dispose old, swap new.
