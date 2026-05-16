@@ -19,7 +19,7 @@
     },
     "rose-gold": {
       "label": "Rose Gold",
-      "color": "#d08878",
+      "color": "#b48273",
       "metalness": 1,
       "roughness": 0,
       "envMap": "metal",
