@@ -30,6 +30,9 @@ import {
 } from './wedding-bandGeometry.js';
 import { createWeddingBandUI } from './wedding-bandUI.js';
 import { createMetalMaterial, listMetals } from '../builder/builderMaterials.js';
+import { createInspector } from '../three/inspector.js';
+
+const DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
 
 // The band UI only exposes the three gold colors. We filter the shared
 // materials library so the dropdown matches the legacy product offering.
@@ -62,6 +65,12 @@ function mount() {
 
   // ---- Three.js scene ----
   const viewer = createScene(stage, { canvasClass: 'wedding-band-canvas' });
+
+  // Debug inspector — only mounted with ?debug=1. Same lil-gui panel as the
+  // /viewer page: click the band to spawn its material folder, tweak the
+  // physical params live, then "copy JSON" to paste back into
+  // materialPresets.json or a per-model override sidecar.
+  const inspector = DEBUG ? createInspector(viewer) : null;
 
   // ---- Initial parameters ----
   const initialParams = {
@@ -111,6 +120,7 @@ function mount() {
   viewer.envMapsReady.then(() => {
     mesh.visible = true;
     refit();
+    inspector?.attach(mesh, { modelId: 'wedding-band', scale: activeRadius });
   });
 
   function rebuild(params) {
@@ -157,6 +167,7 @@ function mount() {
     ro.disconnect();
     if (mesh.geometry) mesh.geometry.dispose();
     if (mesh.material && mesh.material.dispose) mesh.material.dispose();
+    inspector?.dispose();
     disposeScene(viewer);
   });
 }
