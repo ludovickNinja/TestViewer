@@ -65,9 +65,14 @@ function mount() {
 
         <div class="nc-landing__divider" role="presentation"></div>
 
-        <a class="nc-btn nc-btn--ghost nc-landing__builder" href="${baseUrl}builder/">
-          Builder
-        </a>
+        <div class="nc-landing__tools">
+          <a class="nc-btn nc-btn--ghost nc-landing__builder" href="${baseUrl}builder/">
+            Builder
+          </a>
+          <a class="nc-btn nc-btn--ghost nc-landing__builder" href="${baseUrl}wedding-band/">
+            Wedding Band
+          </a>
+        </div>
       </section>
 
       <footer class="nc-landing__footer">

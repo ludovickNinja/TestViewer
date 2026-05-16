@@ -1,0 +1,38 @@
+{
+  "golds": [
+    { "id": "yellow-gold", "name": "Yellow Gold", "color": "#d4af37", "metalness": 1, "roughness": 0.22 },
+    { "id": "rose-gold",   "name": "Rose Gold",   "color": "#b76e79", "metalness": 1, "roughness": 0.24 },
+    { "id": "white-gold",  "name": "White Gold",  "color": "#e8e8e8", "metalness": 1, "roughness": 0.18 }
+  ],
+  "fingerSizes": [
+    { "size": 4,    "diameterMm": 14.07 },
+    { "size": 4.5,  "diameterMm": 14.47 },
+    { "size": 5,    "diameterMm": 14.88 },
+    { "size": 5.5,  "diameterMm": 15.29 },
+    { "size": 6,    "diameterMm": 15.69 },
+    { "size": 6.5,  "diameterMm": 16.10 },
+    { "size": 7,    "diameterMm": 16.51 },
+    { "size": 7.5,  "diameterMm": 16.91 },
+    { "size": 8,    "diameterMm": 17.32 },
+    { "size": 8.5,  "diameterMm": 17.73 },
+    { "size": 9,    "diameterMm": 18.13 },
+    { "size": 9.5,  "diameterMm": 18.54 },
+    { "size": 10,   "diameterMm": 18.95 },
+    { "size": 10.5, "diameterMm": 19.35 },
+    { "size": 11,   "diameterMm": 19.76 },
+    { "size": 11.5, "diameterMm": 20.16 },
+    { "size": 12,   "diameterMm": 20.57 },
+    { "size": 12.5, "diameterMm": 20.98 },
+    { "size": 13,   "diameterMm": 21.38 }
+  ],
+  "ranges": {
+    "width":     { "min": 2.0, "max": 8.0, "step": 0.5, "default": 4.0 },
+    "thickness": { "min": 1.2, "max": 3.0, "step": 0.1, "default": 1.8 }
+  },
+  "defaults": {
+    "profile": "flat",
+    "comfortFit": true,
+    "goldId": "yellow-gold",
+    "fingerSize": 7
+  }
+}
