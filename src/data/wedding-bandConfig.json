@@ -1,9 +1,4 @@
 {
-  "golds": [
-    { "id": "yellow-gold", "name": "Yellow Gold", "color": "#d4af37", "metalness": 1, "roughness": 0.22 },
-    { "id": "rose-gold",   "name": "Rose Gold",   "color": "#b76e79", "metalness": 1, "roughness": 0.24 },
-    { "id": "white-gold",  "name": "White Gold",  "color": "#e8e8e8", "metalness": 1, "roughness": 0.18 }
-  ],
   "fingerSizes": [
     { "size": 4,    "diameterMm": 14.07 },
     { "size": 4.5,  "diameterMm": 14.47 },

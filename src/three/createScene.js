@@ -89,7 +89,7 @@ function detectMobile() {
  *   }
  * }}
  */
-export function createScene(container) {
+export function createScene(container, { canvasClass = 'viewer-canvas' } = {}) {
   // ============================================================================
   // SCENE CONFIGURATION — Adjust these to customize appearance & behavior
   // ============================================================================
@@ -216,7 +216,7 @@ export function createScene(container) {
   }
 
   const canvas = renderer.domElement;
-  canvas.classList.add('viewer-canvas');
+  canvas.classList.add(canvasClass);
   container.appendChild(canvas);
 
   // Add lights using configuration

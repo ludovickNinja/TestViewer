@@ -2,13 +2,16 @@
 // wedding-bandMain.js — entry point for the WEDDING BAND BUILDER (/wedding-band/)
 // ----------------------------------------------------------------------------
 // Wires together:
-//   1. The Three.js scene (wedding-bandScene.js)
+//   1. The shared Three.js scene factory (src/three/createScene.js)
 //   2. The procedural geometry generator (wedding-bandGeometry.js)
-//   3. The material library (reused from src/builder/builderMaterials.js)
+//   3. The shared material library (src/data/materialPresets.json) via
+//      builderMaterials.js — filtered to the three gold options.
 //   4. The parameter panel (wedding-bandUI.js)
 //   5. The config (src/data/wedding-bandConfig.json)
 //
-// Self-contained — does not reach into /viewer or /builder.
+// Runs on the same scene/camera/material pipeline as the /viewer page (HDR
+// envs, ACESFilmic + exposure 0.4, 5-light studio rig, on-demand rendering,
+// fitCameraToObject for framing).
 // ----------------------------------------------------------------------------
 
 import '../styles/base.css';
@@ -18,15 +21,20 @@ import { Mesh } from 'three';
 
 import config from '../data/wedding-bandConfig.json';
 
-import { createWeddingBandScene } from './wedding-bandScene.js';
+import { createScene } from '../three/createScene.js';
+import { frameModel, fitCameraToObject } from '../three/fitCameraToObject.js';
+import { disposeScene } from '../three/disposeScene.js';
 import {
   buildBandGeometry,
   ringSizeToInsideRadiusM
 } from './wedding-bandGeometry.js';
 import { createWeddingBandUI } from './wedding-bandUI.js';
-import { createMetalMaterial } from '../builder/builderMaterials.js';
+import { createMetalMaterial, listMetals } from '../builder/builderMaterials.js';
 
-const golds = config.golds || [];
+// The band UI only exposes the three gold colors. We filter the shared
+// materials library so the dropdown matches the legacy product offering.
+const GOLD_IDS = new Set(['yellow-gold', 'rose-gold', 'white-gold']);
+const golds = listMetals({ filter: (id) => GOLD_IDS.has(id) });
 const fingerSizes = config.fingerSizes || [];
 
 function findGoldById(id) {
@@ -53,7 +61,7 @@ function mount() {
   const overlay = appRoot.querySelector('[data-role="overlay"]');
 
   // ---- Three.js scene ----
-  const viewer = createWeddingBandScene(stage);
+  const viewer = createScene(stage, { canvasClass: 'wedding-band-canvas' });
 
   // ---- Initial parameters ----
   const initialParams = {
@@ -69,7 +77,7 @@ function mount() {
   const initialGold = findGoldById(initialParams.goldId);
   const mesh = new Mesh(
     geometryForParams(initialParams),
-    createMetalMaterial(initialGold)
+    createMetalMaterial(initialGold, { environments: viewer.environments })
   );
   // Rotate the band so its symmetry axis (Y from LatheGeometry) aligns with
   // the scene's Z axis. With the camera looking roughly down +Z the band
@@ -78,6 +86,19 @@ function mount() {
   viewer.scene.add(mesh);
 
   let lastGoldId = initialParams.goldId;
+  let activeRadius = 1;
+
+  function refit() {
+    const frame = frameModel(mesh);
+    fitCameraToObject(viewer.camera, viewer.controls, frame);
+    activeRadius = frame.radius;
+    // Re-apply HDR envs (also handles the case where the HDRs only finish
+    // loading after the mesh was built).
+    void viewer.applyMaterialEnvironments(mesh, null, activeRadius);
+    viewer.requestRender();
+  }
+
+  refit();
 
   function rebuild(params) {
     // Geometry: dispose old, swap new.
@@ -89,10 +110,11 @@ function mount() {
     if (params.goldId !== lastGoldId) {
       const gold = findGoldById(params.goldId);
       const prev = mesh.material;
-      mesh.material = createMetalMaterial(gold);
+      mesh.material = createMetalMaterial(gold, { environments: viewer.environments });
       if (prev && prev.dispose) prev.dispose();
       lastGoldId = params.goldId;
     }
+    viewer.requestRender();
   }
 
   // ---- UI ----
@@ -102,7 +124,7 @@ function mount() {
     ranges: config.ranges,
     defaults: initialParams,
     onChange: rebuild,
-    onResetView: () => viewer.resetView()
+    onResetView: () => refit()
   });
 
   // ---- Resize ----
@@ -122,7 +144,7 @@ function mount() {
     ro.disconnect();
     if (mesh.geometry) mesh.geometry.dispose();
     if (mesh.material && mesh.material.dispose) mesh.material.dispose();
-    viewer.dispose();
+    disposeScene(viewer);
   });
 }
 
