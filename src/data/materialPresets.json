@@ -1,32 +1,24 @@
 {
   "$comment": "Shared material preset library. Two top-level groups: metals and gems. Each preset is a flat key/value map consumable by applyPreset() (src/three/applyPreset.js) and by the override-sidecar pipeline (createScene.js applyOverrideToMaterial). Numbers are starting points tuned against env_metal_014.hdr / env_gem_001.exr — refine via /viewer/?id=<id>&debug=1 and save back into per-model overrides under public/material-overrides/. NOTE: `thickness` and `attenuationDistance` are authored in *model-radius units* — the runtime multiplies them by frame.radius so the same preset reads correctly on millimetre- and metre-scale GLB exports.",
   "metals": {
-    "14k-yellow-gold": {
-      "label": "14K Yellow Gold",
+    "yellow-gold": {
+      "label": "Yellow Gold",
       "color": "#d4af37",
       "metalness": 1,
       "roughness": 0.22,
       "envMap": "metal",
       "envMapIntensity": 1.0
     },
-    "18k-yellow-gold": {
-      "label": "18K Yellow Gold",
-      "color": "#f4c542",
-      "metalness": 1,
-      "roughness": 0.20,
-      "envMap": "metal",
-      "envMapIntensity": 1.0
-    },
-    "14k-white-gold": {
-      "label": "14K White Gold",
+    "white-gold": {
+      "label": "White Gold",
       "color": "#e8e8e8",
       "metalness": 1,
       "roughness": 0.18,
       "envMap": "metal",
       "envMapIntensity": 1.0
     },
-    "14k-rose-gold": {
-      "label": "14K Rose Gold",
+    "rose-gold": {
+      "label": "Rose Gold",
       "color": "#b76e79",
       "metalness": 1,
       "roughness": 0.24,
