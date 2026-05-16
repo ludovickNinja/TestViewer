@@ -19,11 +19,11 @@
     },
     "rose-gold": {
       "label": "Rose Gold",
-      "color": "#b76e79",
+      "color": "#d08878",
       "metalness": 1,
-      "roughness": 0.24,
+      "roughness": 0,
       "envMap": "metal",
-      "envMapIntensity": 1.0
+      "envMapIntensity": 2.5
     },
     "platinum": {
       "label": "Platinum",
