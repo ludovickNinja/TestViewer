@@ -642,6 +642,7 @@ export function createScene(container, { canvasClass = 'viewer-canvas' } = {}) {
     reapplyMeshMaterial,
     environments,
     equirectEnvironments,
+    envMapsReady,
     lights,
     isMobile
   };
