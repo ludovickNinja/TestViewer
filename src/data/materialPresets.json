@@ -3,11 +3,11 @@
   "metals": {
     "yellow-gold": {
       "label": "Yellow Gold",
-      "color": "#d4af37",
+      "color": "#d6af80",
       "metalness": 1,
-      "roughness": 0.22,
+      "roughness": 0,
       "envMap": "metal",
-      "envMapIntensity": 1.0
+      "envMapIntensity": 2.5
     },
     "white-gold": {
       "label": "White Gold",
