@@ -12,12 +12,14 @@
  *   thicknessMm: number,
  *   profile: 'flat' | 'dome',
  *   comfortFit: boolean,
- *   goldId: string,
+ *   metalId: string,
+ *   karat: '10k' | '14k' | '18k' | null,
  *   fingerSize: number
  * }} BandParams
  *
  * @typedef {{
- *   golds:       { id: string, name: string }[],
+ *   metals:      { id: string, name: string }[],
+ *   karats:      { id: '10k' | '14k' | '18k', label: string }[],
  *   fingerSizes: { size: number, diameterMm: number }[],
  *   ranges:      { width: Range, thickness: Range },
  *   defaults:    BandParams,
@@ -33,7 +35,10 @@
  * @param {WeddingBandUIOptions} options
  */
 export function createWeddingBandUI(mountPoint, options) {
-  const { golds, fingerSizes, ranges, defaults } = options;
+  const { metals, karats, fingerSizes, ranges, defaults } = options;
+
+  const goldMetalIds = new Set(['yellow-gold', 'white-gold', 'rose-gold']);
+  const isGold = (id) => goldMetalIds.has(id);
 
   const root = document.createElement('div');
   root.className = 'wedding-band-ui';
@@ -88,14 +93,46 @@ export function createWeddingBandUI(mountPoint, options) {
     </div>
 
     <label class="wedding-band-field">
-      <span class="wedding-band-field__label">Gold Color</span>
-      <select class="wedding-band-field__select" data-role="gold"></select>
+      <span class="wedding-band-field__label">Metal</span>
+      <select class="wedding-band-field__select" data-role="metal"></select>
+    </label>
+
+    <label class="wedding-band-field" data-role="karat-field">
+      <span class="wedding-band-field__label">Karat</span>
+      <div class="wedding-band-segmented" data-role="karat"></div>
     </label>
 
     <label class="wedding-band-field">
       <span class="wedding-band-field__label">Finger Size (US)</span>
       <select class="wedding-band-field__select" data-role="finger-size"></select>
     </label>
+
+    <section class="wedding-band-pricing" data-role="pricing">
+      <h3 class="wedding-band-pricing__title">Estimated Price</h3>
+      <dl class="wedding-band-pricing__rows">
+        <div class="wedding-band-pricing__row">
+          <dt>Weight</dt>
+          <dd data-role="price-weight">—</dd>
+        </div>
+        <div class="wedding-band-pricing__row">
+          <dt>Metal</dt>
+          <dd data-role="price-metal">—</dd>
+        </div>
+        <div class="wedding-band-pricing__row">
+          <dt>Labor</dt>
+          <dd data-role="price-labor">—</dd>
+        </div>
+        <div class="wedding-band-pricing__row">
+          <dt>Markup</dt>
+          <dd data-role="price-markup">—</dd>
+        </div>
+        <div class="wedding-band-pricing__row wedding-band-pricing__row--total">
+          <dt>Total</dt>
+          <dd data-role="price-total">—</dd>
+        </div>
+      </dl>
+      <a class="wedding-band-pricing__admin" href="../admin/">Edit pricing &rarr;</a>
+    </section>
   `;
   root.appendChild(panel);
 
@@ -112,10 +149,16 @@ export function createWeddingBandUI(mountPoint, options) {
   mountPoint.appendChild(root);
 
   // ---- Populate selects ----
-  const goldSelect = panel.querySelector('[data-role="gold"]');
-  goldSelect.innerHTML = golds
-    .map((g) => `<option value="${g.id}">${escapeHtml(g.name)}</option>`)
+  const metalSelect = panel.querySelector('[data-role="metal"]');
+  metalSelect.innerHTML = metals
+    .map((m) => `<option value="${m.id}">${escapeHtml(m.name)}</option>`)
     .join('');
+
+  const karatGroup = panel.querySelector('[data-role="karat"]');
+  karatGroup.innerHTML = karats
+    .map((k) => `<button type="button" data-value="${k.id}">${escapeHtml(k.label)}</button>`)
+    .join('');
+  const karatField = panel.querySelector('[data-role="karat-field"]');
 
   const fingerSelect = panel.querySelector('[data-role="finger-size"]');
   fingerSelect.innerHTML = fingerSizes
@@ -139,7 +182,8 @@ export function createWeddingBandUI(mountPoint, options) {
     thicknessMm: defaults.thicknessMm ?? ranges.thickness.default,
     profile: defaults.profile,
     comfortFit: !!defaults.comfortFit,
-    goldId: defaults.goldId,
+    metalId: defaults.metalId,
+    karat: defaults.karat,
     fingerSize: defaults.fingerSize
   };
 
@@ -150,7 +194,9 @@ export function createWeddingBandUI(mountPoint, options) {
     thicknessValue.textContent = `${state.thicknessMm.toFixed(1)} mm`;
     setSegmented(profileGroup, state.profile);
     setSegmented(comfortGroup, state.comfortFit ? 'yes' : 'no');
-    goldSelect.value = state.goldId;
+    metalSelect.value = state.metalId;
+    karatField.style.display = isGold(state.metalId) ? '' : 'none';
+    setSegmented(karatGroup, state.karat ?? '');
     fingerSelect.value = String(state.fingerSize);
   }
   applyStateToInputs();
@@ -183,8 +229,25 @@ export function createWeddingBandUI(mountPoint, options) {
     setSegmented(comfortGroup, state.comfortFit ? 'yes' : 'no');
     emit();
   });
-  goldSelect.addEventListener('change', () => {
-    state.goldId = goldSelect.value;
+  metalSelect.addEventListener('change', () => {
+    state.metalId = metalSelect.value;
+    // Toggle karat picker visibility; for non-golds clear the karat so the
+    // pricing key resolves to the metal directly.
+    if (isGold(state.metalId)) {
+      if (!state.karat) state.karat = karats[0]?.id ?? '14k';
+      karatField.style.display = '';
+      setSegmented(karatGroup, state.karat);
+    } else {
+      state.karat = null;
+      karatField.style.display = 'none';
+    }
+    emit();
+  });
+  karatGroup.addEventListener('click', (event) => {
+    const btn = event.target.closest('button[data-value]');
+    if (!btn) return;
+    state.karat = btn.dataset.value;
+    setSegmented(karatGroup, state.karat);
     emit();
   });
   fingerSelect.addEventListener('change', () => {
@@ -196,14 +259,54 @@ export function createWeddingBandUI(mountPoint, options) {
     options.onResetView();
   });
 
+  // ---- Pricing readout ----
+  const priceWeight = panel.querySelector('[data-role="price-weight"]');
+  const priceMetal  = panel.querySelector('[data-role="price-metal"]');
+  const priceLabor  = panel.querySelector('[data-role="price-labor"]');
+  const priceMarkup = panel.querySelector('[data-role="price-markup"]');
+  const priceTotal  = panel.querySelector('[data-role="price-total"]');
+
+  /**
+   * Update the pricing readout. Caller passes either a complete breakdown or
+   * null (e.g. when no pricing entry matches the current metal+karat).
+   * @param {{weightGrams: number, breakdown: {metalUSD:number, laborUSD:number, markupUSD:number, totalUSD:number} | null} | null} info
+   */
+  function setPricing(info) {
+    if (!info) {
+      priceWeight.textContent = '—';
+      priceMetal.textContent = '—';
+      priceLabor.textContent = '—';
+      priceMarkup.textContent = '—';
+      priceTotal.textContent = '—';
+      return;
+    }
+    priceWeight.textContent = `${info.weightGrams.toFixed(2)} g`;
+    if (info.breakdown) {
+      priceMetal.textContent = formatUSD(info.breakdown.metalUSD);
+      priceLabor.textContent = formatUSD(info.breakdown.laborUSD);
+      priceMarkup.textContent = formatUSD(info.breakdown.markupUSD);
+      priceTotal.textContent = formatUSD(info.breakdown.totalUSD);
+    } else {
+      priceMetal.textContent = '—';
+      priceLabor.textContent = '—';
+      priceMarkup.textContent = '—';
+      priceTotal.textContent = '—';
+    }
+  }
+
   return {
     root,
     getParams: () => ({ ...state }),
     setParams: (next) => {
       Object.assign(state, next);
       applyStateToInputs();
-    }
+    },
+    setPricing
   };
+}
+
+function formatUSD(n) {
+  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
 }
 
 function setSegmented(group, value) {

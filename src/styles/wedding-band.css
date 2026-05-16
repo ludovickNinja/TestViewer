@@ -283,6 +283,76 @@
   cursor: not-allowed;
 }
 
+/* ---- Pricing section ---- */
+
+.wedding-band-pricing {
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.wedding-band-pricing__title {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.wedding-band-pricing__rows {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wedding-band-pricing__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wedding-band-pricing__row dt {
+  color: var(--color-muted);
+  letter-spacing: 0.05em;
+  font-size: 12px;
+}
+
+.wedding-band-pricing__row dd {
+  margin: 0;
+  color: var(--color-text);
+}
+
+.wedding-band-pricing__row--total {
+  padding-top: 6px;
+  margin-top: 2px;
+  border-top: 1px solid var(--color-border);
+}
+
+.wedding-band-pricing__row--total dt,
+.wedding-band-pricing__row--total dd {
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.wedding-band-pricing__admin {
+  margin-top: var(--space-1);
+  align-self: flex-end;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+.wedding-band-pricing__admin:hover { color: var(--color-text); }
+
 /* ---- Bottom-right action bar ---- */
 
 .wedding-band-actions {

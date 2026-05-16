@@ -1,0 +1,18 @@
+{
+  "$comment": "Default pricing for the wedding-band cost estimator. The admin page (/admin/) lets a user override any field, persisted in localStorage under the `noam.carver.pricing.v1` key. Densities are in g/cm³ (standard alloy values for the listed karats); pricePerGramUSD is wholesale-ish at mid-2024 spot prices and should be retuned per business. Labor is a flat per-band fee; markup is a percentage applied to (metal + labor).",
+  "metals": {
+    "yellow-gold-10k":  { "label": "10K Yellow Gold",  "densityGPerCc": 11.6,  "pricePerGramUSD": 30 },
+    "yellow-gold-14k":  { "label": "14K Yellow Gold",  "densityGPerCc": 13.07, "pricePerGramUSD": 42 },
+    "yellow-gold-18k":  { "label": "18K Yellow Gold",  "densityGPerCc": 15.58, "pricePerGramUSD": 55 },
+    "white-gold-10k":   { "label": "10K White Gold",   "densityGPerCc": 11.07, "pricePerGramUSD": 30 },
+    "white-gold-14k":   { "label": "14K White Gold",   "densityGPerCc": 12.95, "pricePerGramUSD": 42 },
+    "white-gold-18k":   { "label": "18K White Gold",   "densityGPerCc": 15.62, "pricePerGramUSD": 55 },
+    "rose-gold-10k":    { "label": "10K Rose Gold",    "densityGPerCc": 11.55, "pricePerGramUSD": 30 },
+    "rose-gold-14k":    { "label": "14K Rose Gold",    "densityGPerCc": 13.0,  "pricePerGramUSD": 42 },
+    "rose-gold-18k":    { "label": "18K Rose Gold",    "densityGPerCc": 15.0,  "pricePerGramUSD": 55 },
+    "platinum":         { "label": "Platinum 950",     "densityGPerCc": 21.0,  "pricePerGramUSD": 40 },
+    "silver":           { "label": "Sterling Silver 925", "densityGPerCc": 10.36, "pricePerGramUSD": 2 }
+  },
+  "laborUSD": 75,
+  "markupPct": 30
+}
