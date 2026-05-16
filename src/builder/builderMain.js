@@ -2,40 +2,52 @@
 // builderMain.js — entry point for the BUILDER page (/builder/)
 // ----------------------------------------------------------------------------
 // Wires together:
-//   1. The Three.js scene (builderScene.js)
-//   2. The catalog + metal data (src/data/builderCatalog.json, builderMetals.json)
-//   3. The GLB loader (builderLoader.js)
-//   4. The metal/material library (builderMaterials.js)
+//   1. The shared Three.js scene factory (src/three/createScene.js)
+//   2. The catalog data (src/data/builderCatalog.json)
+//   3. The metal presets — sourced from the shared material library
+//      (src/data/materialPresets.json) via builderMaterials.js
+//   4. The GLB loader (builderLoader.js)
 //   5. The click-to-select controller (builderSelection.js)
 //   6. The export helpers (builderExport.js)
 //   7. The DOM panels (builderUI.js)
 //
-// Self-contained: nothing here reaches into the existing /viewer code, so the
-// builder cannot regress the viewer. All builder-specific assets live under
-// /assets/builder/ (served from /public/assets/builder/ at build time).
+// The builder now runs on the same scene/camera/material pipeline as the
+// /viewer page: identical HDR environments, exposure, lighting rig, on-demand
+// render loop, and material preset application. Camera framing uses
+// fitCameraToObject() after the first part loads, replacing the previous
+// hard-coded camera position.
 //
 // IMPORTANT — jewelry coordinate system:
-//   We DO NOT auto-center, DO NOT auto-scale, and DO NOT recompute origins
-//   on loaded GLBs. Shank and head GLBs are exported from Rhino using a
-//   shared world origin; trusting those transforms is what makes them line
-//   up. See README notes in builderLoader.js.
+//   We DO NOT auto-scale or recompute origins on loaded GLBs. Shank and head
+//   GLBs are exported from Rhino using a shared world origin; trusting those
+//   transforms is what makes them line up. Note that frameModel() *does*
+//   recenter the combined parts at (0,0,0) once, on the first fit pass, so
+//   the camera presets have a well-defined target.
 // ----------------------------------------------------------------------------
 
 import '../styles/base.css';
 import '../styles/builder.css';
 
-import catalog from '../data/builderCatalog.json';
-import metalsDoc from '../data/builderMetals.json';
+import { Box3, Vector3 } from 'three';
 
-import { createBuilderScene } from './builderScene.js';
+import catalog from '../data/builderCatalog.json';
+
+import { createScene } from '../three/createScene.js';
+import { fitCameraToObject } from '../three/fitCameraToObject.js';
+import { disposeScene } from '../three/disposeScene.js';
 import { loadBuilderPart, removeBuilderPart } from './builderLoader.js';
-import { applyMetalToMesh, applyMetalToTree, findMetalById } from './builderMaterials.js';
+import {
+  applyMetalToMesh,
+  applyMetalToTree,
+  findMetalById,
+  listMetals
+} from './builderMaterials.js';
 import { createSelectionController } from './builderSelection.js';
 import { exportBuilderGLB, exportBuilderJSON } from './builderExport.js';
 import { createBuilderUI } from './builderUI.js';
 
 const baseUrl = import.meta.env.BASE_URL ?? '/';
-const metals = metalsDoc.metals || [];
+const metals = listMetals();
 
 function mount() {
   const appRoot = document.getElementById('app');
@@ -54,7 +66,15 @@ function mount() {
   const overlay = appRoot.querySelector('[data-role="overlay"]');
 
   // ---- Three.js scene ----
-  const viewer = createBuilderScene(stage);
+  // Same factory as /viewer: HDR-lit, on-demand rendering, ACESFilmic at
+  // exposure 0.4, 5-light studio rig. We pass a distinct canvas class so the
+  // existing builder CSS targeting (.builder-canvas) keeps working.
+  const viewer = createScene(stage, { canvasClass: 'builder-canvas' });
+
+  /** Set to true after fitCameraToObject runs the first time. */
+  let framed = false;
+  /** Last frame radius — used to scale size-scoped material props. */
+  let activeRadius = 1;
 
   // ---- DOM (panels) ----
   const ui = createBuilderUI(overlay, {
@@ -64,11 +84,7 @@ function mount() {
     onLoadParts: () => {
       void loadParts(ui.getSelectedShankId(), ui.getSelectedHeadId());
     },
-    onShankChange: () => {
-      // The user picks from the dropdown but we wait for "Load / Update" to
-      // actually fetch the GLB. This keeps the UX predictable and avoids
-      // surprise downloads.
-    },
+    onShankChange: () => {},
     onHeadChange: () => {},
     onRename: (newName) => {
       const sel = selection.selected;
@@ -87,9 +103,10 @@ function mount() {
       if (!sel) return;
       const metal = findMetalById(metals, metalId);
       if (!metal) return;
-      applyMetalToMesh(sel, metal);
+      applyMetalToMesh(sel, metal, { environments: viewer.environments });
       // Re-select to refresh the selection highlight on the new material.
       selection.select(sel);
+      viewer.requestRender();
     },
     onExportGLB: () => {
       const shank = findRoot(viewer.scene, 'shank');
@@ -118,9 +135,16 @@ function mount() {
       });
     },
     onResetView: () => {
-      viewer.resetView();
+      // Re-fit to the currently-loaded parts instead of restoring a fixed
+      // hard-coded position — same behaviour as the /viewer reset button.
+      const frame = computeSceneFrame(viewer.scene);
+      if (frame) {
+        fitCameraToObject(viewer.camera, viewer.controls, frame);
+        activeRadius = frame.radius;
+      }
       selection.clear();
       ui.setSelected(null);
+      viewer.requestRender();
     }
   });
 
@@ -129,7 +153,12 @@ function mount() {
     canvas: viewer.canvas,
     camera: viewer.camera,
     scene: viewer.scene,
-    onSelect: (mesh) => ui.setSelected(mesh)
+    onSelect: (mesh) => {
+      ui.setSelected(mesh);
+      // Selection mutates material.emissive without firing controls 'change',
+      // so the on-demand render loop needs a manual nudge.
+      viewer.requestRender();
+    }
   });
 
   // ---- Resize ----
@@ -156,8 +185,6 @@ function mount() {
       true
     );
   } else {
-    // Try the initial load. If GLBs are missing the loader will reject and
-    // we'll surface a friendly toast — we do NOT crash.
     void loadParts(initialShankId, initialHeadId, /*silentMissing*/ true);
   }
 
@@ -165,7 +192,7 @@ function mount() {
   window.addEventListener('beforeunload', () => {
     selection.dispose();
     ro.disconnect();
-    viewer.dispose();
+    disposeScene(viewer);
   });
 
   // --------------------------------------------------------------------------
@@ -214,6 +241,25 @@ function mount() {
     } else {
       ui.hideToast();
     }
+
+    // Frame the combined parts once — preserve the user's camera afterwards
+    // so swapping a head doesn't yank the view back.
+    if (!framed) {
+      const frame = computeSceneFrame(viewer.scene);
+      if (frame) {
+        fitCameraToObject(viewer.camera, viewer.controls, frame);
+        activeRadius = frame.radius;
+        framed = true;
+      }
+    }
+
+    // Assign HDR envs to every freshly-loaded material. Safe to call before
+    // HDRs finish loading — applyMaterialEnvironments awaits internally.
+    const shankRoot = findRoot(viewer.scene, 'shank');
+    const headRoot = findRoot(viewer.scene, 'head');
+    if (shankRoot) await viewer.applyMaterialEnvironments(shankRoot, null, activeRadius);
+    if (headRoot) await viewer.applyMaterialEnvironments(headRoot, null, activeRadius);
+    viewer.requestRender();
   }
 
   /**
@@ -221,21 +267,16 @@ function mount() {
    * with the same role first, then applies the catalog entry's default metal.
    */
   async function loadOnePart(role, entry) {
-    // The entry.file path is absolute ("/assets/builder/shanks/foo.glb").
-    // Respect Vite's BASE_URL so it works under /<repo>/ on GitHub Pages.
     const url = joinUrl(baseUrl, entry.file);
     const root = await loadBuilderPart(url, role);
 
-    // Stash the catalog id so JSON export round-trips correctly.
     root.userData.builderCatalogId = entry.id;
 
-    // Apply the default metal preset across the entire subtree, but only if
-    // we know about it. If the catalog metal id isn't in the metals doc, we
-    // leave the imported material alone.
     const metal = findMetalById(metals, entry.defaultMetal);
-    if (metal) applyMetalToTree(root, metal);
+    if (metal) {
+      applyMetalToTree(root, metal, { environments: viewer.environments });
+    }
 
-    // Remove any previous part with the same role, then add the new one.
     removeBuilderPart(viewer.scene, role);
     viewer.scene.add(root);
 
@@ -256,6 +297,29 @@ function findRoot(scene, role) {
     if (child.userData && child.userData.builderRole === role) return child;
   }
   return null;
+}
+
+/**
+ * Compute a ModelFrame-compatible bounds object covering every builder part
+ * currently in the scene. Returns null if no parts are loaded.
+ *
+ * @param {import('three').Scene} scene
+ */
+function computeSceneFrame(scene) {
+  const box = new Box3();
+  let any = false;
+  for (const child of scene.children) {
+    if (!child.userData?.builderRole) continue;
+    box.expandByObject(child);
+    any = true;
+  }
+  if (!any || box.isEmpty()) return null;
+  const size = new Vector3();
+  const center = new Vector3();
+  box.getSize(size);
+  box.getCenter(center);
+  const radius = Math.max(size.x, size.y, size.z) * 0.5 || 0.05;
+  return { center, size, radius };
 }
 
 /**
