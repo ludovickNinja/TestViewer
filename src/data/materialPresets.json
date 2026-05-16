@@ -60,7 +60,7 @@
       "color": "#ffffff",
       "ior": 2.7,
       "dispersion": 0.04,
-      "bounces": 3,
+      "bounces": 5,
       "reflectivity": 0.5,
       "envMap": "gem",
       "envMapIntensity": 1.4
