@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 32" role="img" aria-label="NOAM CARVER">
+  <style>
+    .wm { font: 400 22px 'Cormorant Garamond', 'Times New Roman', serif; letter-spacing: 0.34em; fill: #f5f3ee; }
+    .dot { fill: #f5f3ee; }
+  </style>
+  <text class="wm" x="0" y="24">NOAM</text>
+  <circle class="dot" cx="124" cy="18" r="1.6"/>
+  <text class="wm" x="138" y="24">CARVER</text>
+</svg>
