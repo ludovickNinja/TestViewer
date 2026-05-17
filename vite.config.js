@@ -2,11 +2,12 @@
 // Vite configuration
 // ----------------------------------------------------------------------------
 //
-// This project has FOUR pages:
+// This project has FIVE pages:
 //   /               -> the landing page (paste a code OR click "test your luck")
 //   /viewer/        -> the actual 3D viewer (reads ?id=... from the URL)
 //   /builder/       -> the jewelry configurator (shank + head builder)
 //   /wedding-band/  -> the wedding band builder (procedural ring geometry)
+//   /admin/         -> pricing admin for the wedding-band cost estimator
 //
 // All pages are plain index.html files; Vite figures out the rest.
 //
@@ -37,7 +38,9 @@ export default defineConfig({
         // Builder page (jewelry configurator). Lives at /builder/index.html.
         builder: resolve(__dirname, 'builder/index.html'),
         // Wedding band builder (procedural). Lives at /wedding-band/index.html.
-        weddingBand: resolve(__dirname, 'wedding-band/index.html')
+        weddingBand: resolve(__dirname, 'wedding-band/index.html'),
+        // Pricing admin. Lives at /admin/index.html.
+        admin: resolve(__dirname, 'admin/index.html')
       }
     }
   },

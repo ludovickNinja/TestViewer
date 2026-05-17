@@ -26,22 +26,37 @@ import { frameModel, fitCameraToObject } from '../three/fitCameraToObject.js';
 import { disposeScene } from '../three/disposeScene.js';
 import {
   buildBandGeometry,
+  buildBandProfile,
   ringSizeToInsideRadiusM
 } from './wedding-bandGeometry.js';
 import { createWeddingBandUI } from './wedding-bandUI.js';
 import { createMetalMaterial, listMetals } from '../builder/builderMaterials.js';
 import { createInspector } from '../three/inspector.js';
+import {
+  loadPricing,
+  pricingKeyFor,
+  hasKarat,
+  computePrice
+} from '../pricing/pricingService.js';
+import { ensureFreshSpot, loadSpot } from '../pricing/spotPriceService.js';
+import { bandVolumeM3, massGrams } from '../pricing/computeBandWeight.js';
 
 const DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
 
-// The band UI only exposes the three gold colors. We filter the shared
-// materials library so the dropdown matches the legacy product offering.
-const GOLD_IDS = new Set(['yellow-gold', 'rose-gold', 'white-gold']);
-const golds = listMetals({ filter: (id) => GOLD_IDS.has(id) });
+// The band UI exposes the three gold colors plus platinum and sterling
+// silver. Karat (10K/14K/18K) is only meaningful for the golds — it doesn't
+// affect rendering, only pricing.
+const BAND_METAL_IDS = new Set(['yellow-gold', 'white-gold', 'rose-gold', 'platinum', 'silver']);
+const metals = listMetals({ filter: (id) => BAND_METAL_IDS.has(id) });
+const karats = [
+  { id: '10k', label: '10K' },
+  { id: '14k', label: '14K' },
+  { id: '18k', label: '18K' }
+];
 const fingerSizes = config.fingerSizes || [];
 
-function findGoldById(id) {
-  return golds.find((g) => g.id === id) || golds[0];
+function findMetalById(id) {
+  return metals.find((m) => m.id === id) || metals[0];
 }
 
 function diameterForSize(size) {
@@ -73,12 +88,17 @@ function mount() {
   const inspector = DEBUG ? createInspector(viewer) : null;
 
   // ---- Initial parameters ----
+  const initialMetalId = config.defaults.metalId ?? config.defaults.goldId ?? metals[0].id;
+  const initialKarat = hasKarat(initialMetalId)
+    ? config.defaults.karat ?? '14k'
+    : null;
   const initialParams = {
     widthMm: config.ranges.width.default,
     thicknessMm: config.ranges.thickness.default,
     profile: config.defaults.profile,
     comfortFit: config.defaults.comfortFit,
-    goldId: config.defaults.goldId,
+    metalId: initialMetalId,
+    karat: initialKarat,
     fingerSize: config.defaults.fingerSize
   };
 
@@ -88,10 +108,10 @@ function mount() {
   // `scene.environment` is assigned has nothing but the direct lights to
   // shade against, which on metals reads as almost black — without this
   // gate the band would flash dark for one or two frames on first paint.
-  const initialGold = findGoldById(initialParams.goldId);
+  const initialMetal = findMetalById(initialParams.metalId);
   const mesh = new Mesh(
     geometryForParams(initialParams),
-    createMetalMaterial(initialGold, { environments: viewer.environments })
+    createMetalMaterial(initialMetal, { environments: viewer.environments })
   );
   // Rotate the band so its symmetry axis (Y from LatheGeometry) aligns with
   // the scene's Z axis. With the camera looking roughly down +Z the band
@@ -100,8 +120,37 @@ function mount() {
   mesh.visible = false;
   viewer.scene.add(mesh);
 
-  let lastGoldId = initialParams.goldId;
+  let lastMetalId = initialParams.metalId;
   let activeRadius = 1;
+
+  // ---- Pricing ----
+  const pricing = loadPricing();
+  // Spot snapshot starts at whatever's in localStorage (could be null on
+  // first visit). We kick off an async refresh below and re-run pricing
+  // once that resolves — the page never blocks on the network.
+  let spot = loadSpot();
+  let bandUI = null;  // set once createWeddingBandUI runs below
+
+  function updatePricing(params) {
+    if (!bandUI) return;
+    const profile = profileForParams(params);
+    const volume = bandVolumeM3(profile);
+    const key = pricingKeyFor(params.metalId, params.karat);
+    const entry = pricing.metals[key];
+    if (!entry) {
+      bandUI.setPricing({ weightGrams: 0, breakdown: null, spotSourceLabel: spotSourceLabel() });
+      return;
+    }
+    const weightGrams = massGrams(volume, entry.densityGPerCc);
+    const breakdown = computePrice(pricing, spot, key, weightGrams);
+    bandUI.setPricing({ weightGrams, breakdown, spotSourceLabel: spotSourceLabel() });
+  }
+
+  function spotSourceLabel() {
+    if (!spot) return 'Spot: bundled fallback';
+    const stamp = new Date(spot.fetchedAt).toLocaleString();
+    return `Spot: ${spot.source} · ${stamp}`;
+  }
 
   function refit() {
     const frame = frameModel(mesh);
@@ -129,25 +178,39 @@ function mount() {
     mesh.geometry = geometryForParams(params);
     if (old) old.dispose();
 
-    // Material: keep instance unless the gold changed.
-    if (params.goldId !== lastGoldId) {
-      const gold = findGoldById(params.goldId);
+    // Material: keep instance unless the metal changed.
+    if (params.metalId !== lastMetalId) {
+      const metal = findMetalById(params.metalId);
       const prev = mesh.material;
-      mesh.material = createMetalMaterial(gold, { environments: viewer.environments });
+      mesh.material = createMetalMaterial(metal, { environments: viewer.environments });
       if (prev && prev.dispose) prev.dispose();
-      lastGoldId = params.goldId;
+      lastMetalId = params.metalId;
     }
+    updatePricing(params);
     viewer.requestRender();
   }
 
   // ---- UI ----
-  createWeddingBandUI(overlay, {
-    golds,
+  bandUI = createWeddingBandUI(overlay, {
+    metals,
+    karats,
     fingerSizes,
     ranges: config.ranges,
     defaults: initialParams,
     onChange: rebuild,
     onResetView: () => refit()
+  });
+  updatePricing(initialParams);
+
+  // Refresh the spot snapshot in the background; rerun the pricing once it
+  // resolves. If the fetch fails we keep whatever was already in `spot`
+  // (cached snapshot, or null → fallback prices). Errors are swallowed
+  // inside ensureFreshSpot.
+  ensureFreshSpot().then((fresh) => {
+    if (fresh) {
+      spot = fresh;
+      updatePricing(bandUI.getParams());
+    }
   });
 
   // ---- Resize ----
@@ -173,13 +236,21 @@ function mount() {
 }
 
 function geometryForParams(params) {
-  return buildBandGeometry({
+  return buildBandGeometry(geometryParams(params));
+}
+
+function profileForParams(params) {
+  return buildBandProfile(geometryParams(params));
+}
+
+function geometryParams(params) {
+  return {
     widthMm: params.widthMm,
     thicknessMm: params.thicknessMm,
     insideRadiusM: ringSizeToInsideRadiusM(diameterForSize(params.fingerSize)),
     profile: params.profile,
     comfortFit: params.comfortFit
-  });
+  };
 }
 
 mount();

@@ -1,0 +1,23 @@
+{
+  "$comment": "Wedding-band pricing defaults. The /admin/ page lets a user override premiums/density/labor/markup; overrides persist in localStorage under `noam.carver.pricing.v1`. Final $/g for a metal is computed at runtime as (spotPerOzUSD / 31.1034768) * purityFraction + premiumPerGramUSD, where spot prices come from Stooq via spotPriceService.js (cached daily, refreshed after 10:00 London). If the live fetch fails and no snapshot is cached, the fallbackSpot block below is used so the page never breaks.",
+  "metals": {
+    "yellow-gold-10k":  { "label": "10K Yellow Gold",       "densityGPerCc": 11.6,  "spotMetal": "gold",     "purityFraction": 0.4167, "premiumPerGramUSD": 10 },
+    "yellow-gold-14k":  { "label": "14K Yellow Gold",       "densityGPerCc": 13.07, "spotMetal": "gold",     "purityFraction": 0.5833, "premiumPerGramUSD": 12 },
+    "yellow-gold-18k":  { "label": "18K Yellow Gold",       "densityGPerCc": 15.58, "spotMetal": "gold",     "purityFraction": 0.75,   "premiumPerGramUSD": 14 },
+    "white-gold-10k":   { "label": "10K White Gold",        "densityGPerCc": 11.07, "spotMetal": "gold",     "purityFraction": 0.4167, "premiumPerGramUSD": 12 },
+    "white-gold-14k":   { "label": "14K White Gold",        "densityGPerCc": 12.95, "spotMetal": "gold",     "purityFraction": 0.5833, "premiumPerGramUSD": 14 },
+    "white-gold-18k":   { "label": "18K White Gold",        "densityGPerCc": 15.62, "spotMetal": "gold",     "purityFraction": 0.75,   "premiumPerGramUSD": 16 },
+    "rose-gold-10k":    { "label": "10K Rose Gold",         "densityGPerCc": 11.55, "spotMetal": "gold",     "purityFraction": 0.4167, "premiumPerGramUSD": 10 },
+    "rose-gold-14k":    { "label": "14K Rose Gold",         "densityGPerCc": 13.0,  "spotMetal": "gold",     "purityFraction": 0.5833, "premiumPerGramUSD": 12 },
+    "rose-gold-18k":    { "label": "18K Rose Gold",         "densityGPerCc": 15.0,  "spotMetal": "gold",     "purityFraction": 0.75,   "premiumPerGramUSD": 14 },
+    "platinum":         { "label": "Platinum 950",          "densityGPerCc": 21.0,  "spotMetal": "platinum", "purityFraction": 0.95,   "premiumPerGramUSD": 8 },
+    "silver":           { "label": "Sterling Silver 925",   "densityGPerCc": 10.36, "spotMetal": "silver",   "purityFraction": 0.925,  "premiumPerGramUSD": 0.5 }
+  },
+  "fallbackSpot": {
+    "goldPerOzUSD": 2400,
+    "silverPerOzUSD": 30,
+    "platinumPerOzUSD": 950
+  },
+  "laborUSD": 75,
+  "markupPct": 30
+}
