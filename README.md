@@ -152,6 +152,18 @@ Both buttons are disabled until the model finishes loading. Capture is done
 on the live renderer (between two repaints) so the customer never sees the
 intermediate frames.
 
+### Premium touches on the strip
+
+- **Live previews.** The four strip tiles render from the loaded GLB after
+  the HDR environments resolve — no JPGs to ship.
+- **Hover turntable.** The Perspective tile also stores a 12-frame
+  filmstrip; hovering or focusing the tile plays a quick 360° spin via a
+  CSS `steps(12)` animation. Respects `prefers-reduced-motion`.
+- **Stays in sync.** Toggling the engagement ring / matching band selector
+  re-renders the strip so each tile only shows the part that's actually
+  visible. With `?debug=1`, material edits in the inspector also schedule a
+  debounced re-render so the strip reflects the latest tweaks.
+
 ---
 
 ## Lighting: dual HDR environments

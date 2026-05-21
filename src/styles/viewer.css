@@ -422,6 +422,40 @@ body:has(.nc-app) {
   opacity: 1;
 }
 
+/* ---------- Turntable (perspective tile hover animation) ---------- */
+
+.nc-thumb__turntable {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background-repeat: no-repeat;
+  background-position: 0 0;
+  opacity: 0;
+  transition: opacity var(--transition-base);
+  animation-name: nc-turntable-spin;
+  animation-duration: 1.6s;
+  animation-iteration-count: infinite;
+  animation-play-state: paused;
+  pointer-events: none;
+}
+
+.nc-thumb--has-turntable:hover .nc-thumb__turntable,
+.nc-thumb--has-turntable:focus-visible .nc-thumb__turntable {
+  opacity: 1;
+  animation-play-state: running;
+}
+
+@keyframes nc-turntable-spin {
+  from { background-position-y: 0%; }
+  to   { background-position-y: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nc-thumb__turntable { animation: none; }
+  .nc-thumb--has-turntable:hover .nc-thumb__turntable,
+  .nc-thumb--has-turntable:focus-visible .nc-thumb__turntable { opacity: 0; }
+}
+
 .nc-thumb__placeholder {
   position: absolute;
   inset: 0;

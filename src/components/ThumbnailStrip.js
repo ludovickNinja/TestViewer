@@ -79,6 +79,9 @@ export function createThumbnailStrip(options) {
     const btn = buttons.get(id);
     if (!btn || !imageUrl) return;
 
+    // Any previous turntable filmstrip is replaced by the still image.
+    btn.querySelector('.nc-thumb__turntable')?.remove();
+
     const placeholder = btn.querySelector('.nc-thumb__placeholder');
     const existingImg = btn.querySelector('.nc-thumb__img');
     if (existingImg) existingImg.remove();
@@ -100,5 +103,34 @@ export function createThumbnailStrip(options) {
     btn.insertBefore(img, btn.firstChild);
   }
 
-  return { element: el, setActive, setThumbnail };
+  /**
+   * Attach a filmstrip turntable to a tile. The strip is a tall image
+   * containing `frames` square frames stacked vertically; CSS animates
+   * `background-position-y` with `steps(frames)` so it plays as a 360°
+   * turntable on hover/focus without needing a video file.
+   *
+   * @param {import('../three/cameraViews.js').CameraViewId} id
+   * @param {string} filmstripUrl - Data URL of the tall multi-frame image.
+   * @param {number} frames - Number of frames stacked in the filmstrip.
+   */
+  function setTurntable(id, filmstripUrl, frames) {
+    const btn = buttons.get(id);
+    if (!btn || !filmstripUrl || !frames || frames < 2) return;
+
+    btn.querySelector('.nc-thumb__turntable')?.remove();
+
+    const turntable = document.createElement('div');
+    turntable.className = 'nc-thumb__turntable';
+    turntable.style.backgroundImage = `url("${filmstripUrl}")`;
+    // background-size height = frames * 100% stacks the strip vertically and
+    // background-position-y from 0 to (frames-1)/frames * 100% sweeps it.
+    turntable.style.backgroundSize = `100% ${frames * 100}%`;
+    turntable.style.setProperty('--nc-turntable-frames', String(frames));
+    // Step end so the last frame holds, then loops back to the first.
+    turntable.style.animationTimingFunction = `steps(${frames}, end)`;
+    btn.classList.add('nc-thumb--has-turntable');
+    btn.appendChild(turntable);
+  }
+
+  return { element: el, setActive, setThumbnail, setTurntable };
 }

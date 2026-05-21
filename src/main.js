@@ -42,6 +42,7 @@ import { createInspector } from './three/inspector.js';
 import {
   captureAllAngles,
   captureCurrentView,
+  captureTurntableFilmstrip,
   generateAngleThumbnails
 } from './three/generateAngleThumbnails.js';
 import { triggerDownload } from './three/triggerDownload.js';
@@ -224,11 +225,44 @@ function mount() {
       thumbActions.setEnabled(true);
       loading.hide();
 
+      // Re-render the bottom-strip thumbnails from the live scene. Called
+      // after the HDR environments resolve, every time the part selector
+      // flips between engagement / band / both, and (debounced) whenever the
+      // debug inspector tweaks a material — so the strip always matches what
+      // the customer is actually looking at.
+      let thumbnailJobToken = 0;
+      function regenerateThumbnails() {
+        if (!activeFrame) return;
+        const job = ++thumbnailJobToken;
+        try {
+          const thumbs = generateAngleThumbnails(viewer, activeFrame);
+          if (job !== thumbnailJobToken) return; // a newer run superseded us
+          for (const view of CAMERA_VIEWS) {
+            const url = thumbs[view.id];
+            if (url) thumbStrip.setThumbnail(view.id, url);
+          }
+          // Premium touch: the Perspective tile gets a 12-frame turntable
+          // filmstrip that plays on hover/focus. Skipped on reduced-motion
+          // displays via CSS.
+          const perspective = CAMERA_VIEWS.find((v) => v.id === 'perspective');
+          if (perspective) {
+            const film = captureTurntableFilmstrip(viewer, activeFrame, perspective);
+            if (job === thumbnailJobToken && film?.url) {
+              thumbStrip.setTurntable('perspective', film.url, film.frames);
+            }
+          }
+        } catch (err) {
+          console.warn('[viewer] thumbnail regeneration failed', err);
+        }
+        viewer.requestRender();
+      }
+
       // If the GLB exposes both an engagement-ring group and a matching-band
       // group, show a small dropdown that lets the customer pick which part
       // is visible. The ?show=engagement|band|all URL param seeds the initial
       // choice; toggling the dropdown mirrors the choice back into the URL so
-      // a shared link reproduces the same state.
+      // a shared link reproduces the same state, AND re-renders the bottom
+      // strip so its tiles only show whatever part is currently visible.
       const parts = detectRingParts(root);
       if (parts.engagement && parts.band) {
         const initial = readShowFromUrl() ?? 'all';
@@ -240,6 +274,7 @@ function mount() {
             applyPartVisibility(parts, value);
             writeShowToUrl(value);
             viewer.requestRender();
+            regenerateThumbnails();
           }
         });
         layout.partSelectorSlot.appendChild(selector.element);
@@ -249,10 +284,21 @@ function mount() {
         writeShowToUrl('all');
       }
 
+      // Debounced inspector-driven re-render. lil-gui's onChange fires for
+      // every slider tick; 350 ms is long enough that dragging a roughness
+      // slider doesn't thrash but short enough that a single click-and-release
+      // tweak appears in the strip almost immediately.
+      let inspectorRegenTimer = 0;
+      const scheduleInspectorRegen = () => {
+        clearTimeout(inspectorRegenTimer);
+        inspectorRegenTimer = window.setTimeout(regenerateThumbnails, 350);
+      };
+
       inspector?.attach(root, {
         modelId: id,
         initialOverrides: overrides,
-        scale: frame.radius
+        scale: frame.radius,
+        onChange: scheduleInspectorRegen
       });
 
       // Once the HDR environments have been resolved onto every material,
@@ -262,12 +308,7 @@ function mount() {
       // viewer keeps no thumbnail files on the server.
       envsApplied
         .then(() => {
-          const thumbs = generateAngleThumbnails(viewer, frame);
-          for (const view of CAMERA_VIEWS) {
-            const url = thumbs[view.id];
-            if (url) thumbStrip.setThumbnail(view.id, url);
-          }
-          viewer.requestRender();
+          regenerateThumbnails();
         })
         .catch((err) => {
           console.warn('[viewer] angle thumbnail generation failed', err);

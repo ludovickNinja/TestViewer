@@ -633,6 +633,13 @@ export function createInspector(viewer) {
           if (props && typeof props === 'object') overrides.set(name, { ...props });
         }
       }
+      // Let the host know when any lil-gui controller changes so it can
+      // refresh derived state (e.g. re-render the bottom-strip thumbnails so
+      // a designer's tweak shows up in the previews). Fires for every slider
+      // movement; the host is expected to debounce.
+      if (typeof opts.onChange === 'function') {
+        gui.onChange(opts.onChange);
+      }
     },
     dispose() {
       cancelAnimationFrame(raf);
