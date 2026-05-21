@@ -77,21 +77,7 @@ Open:
    The viewer works for any valid ID, even one not listed here — the manifest
    only controls the random picker.
 
-3. (Optional) Add still images for the preset views in `public/thumbnails/`:
-
-   ```
-   public/thumbnails/NC12345-front.jpg
-   public/thumbnails/NC12345-side.jpg
-   public/thumbnails/NC12345-top.jpg
-   public/thumbnails/NC12345-perspective.jpg
-   ```
-
-   If a thumbnail is missing, the viewer **generates one on the fly** from the
-   loaded model after the HDR environments resolve, so even brand-new IDs
-   ship with usable previews. Pre-baked JPGs (around 512×512 px) still work
-   if you want pixel-perfect control.
-
-4. Share the preview URL:
+3. Share the preview URL:
 
    ```
    https://yourdomain.com/viewer/?id=NC12345
@@ -99,6 +85,11 @@ Open:
 
 Filename rules: only letters, numbers, dashes, and underscores. Slashes and
 path traversal (`..`) are rejected by the URL sanitizer.
+
+The bottom-strip thumbnails (Front / Side / Top / Perspective) are always
+rendered live from the GLB after the HDR environments resolve — no JPGs to
+generate, name, or ship alongside the model. Drop in the `.glb` and the
+previews appear on first load.
 
 ---
 
@@ -370,7 +361,6 @@ a manual base, for example `VITE_BASE=/ npm run build`.
 │   ├── branding/noam-carver-logo.svg
 │   ├── models/                  # Customer preview GLBs + README
 │   ├── models.json              # IDs available to "Test your luck"
-│   ├── thumbnails/              # Optional still-image previews
 │   ├── env_metal_014.hdr        # Metal HDR environment
 │   ├── env_gem_001.exr          # Gem HDR environment
 │   ├── material-overrides/      # Per-model <id>.materials.json sidecars
@@ -462,8 +452,8 @@ Content:
 - [x] Multiple parts per preview (engagement ring + matching band, with
       `?show=` URL filter)
 - [ ] Multiple still images per preview
-- [x] Automatic screenshot generation for thumbnails (rendered from the GLB
-      at load time)
+- [x] Automatic screenshot generation for thumbnails (always rendered from
+      the GLB at load time — no JPGs on the server)
 - [x] Download current view / download all 4 angles as JPEG
 - [ ] Annotations / hotspots on the model
 - [x] Material / metal switching (builder + per-material overrides)

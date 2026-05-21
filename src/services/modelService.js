@@ -7,11 +7,12 @@
 //
 // into the actual asset URLs the viewer needs:
 //
-//     model:       /models/NC12345.glb
-//     thumbnails:  /thumbnails/NC12345-front.jpg
-//                  /thumbnails/NC12345-side.jpg
-//                  /thumbnails/NC12345-top.jpg
-//                  /thumbnails/NC12345-perspective.jpg
+//     model:               /models/NC12345.glb
+//     material overrides:  /material-overrides/NC12345.json   (optional)
+//
+// The viewer's bottom thumbnail strip is always live-rendered from the GLB
+// (see src/three/generateAngleThumbnails.js), so this service does not
+// resolve any thumbnail image URLs. One less folder to keep in sync.
 //
 // The ID is sanitized — only letters, numbers, dashes, and underscores are
 // allowed. That blocks slashes, "..", and other path-traversal tricks.
@@ -22,17 +23,6 @@
 // protect designs, replace this service with a backend lookup that maps
 // opaque preview IDs to short-lived signed URLs against private storage.
 // ----------------------------------------------------------------------------
-
-// We deliberately don't import from `three/cameraViews.js` here. That file
-// pulls in Three.js, and we want the landing page (which uses this service)
-// to stay tiny. The four preset view IDs are duplicated below, but they're
-// just four short strings — easy to keep in sync.
-const VIEW_IDS = [
-  { id: 'front',       label: 'Front' },
-  { id: 'side',        label: 'Side' },
-  { id: 'top',         label: 'Top' },
-  { id: 'perspective', label: 'Perspective' }
-];
 
 // Allowed: A-Z, a-z, 0-9, dash, underscore. 1 to 64 chars.
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
@@ -98,7 +88,7 @@ export function sanitizeModelId(raw) {
 }
 
 /**
- * Build the model + thumbnail URLs for a given preview ID.
+ * Build the asset URLs for a given preview ID.
  *
  * Uses Vite's `import.meta.env.BASE_URL` so the same code works on
  *   http://localhost:5173/      (base = "/")
@@ -110,28 +100,17 @@ export function sanitizeModelId(raw) {
  *   displayName: string,
  *   modelUrl: string,
  *   materialOverridesUrl: string,
- *   thumbnails: Array<{ id: string, label: string, imageUrl: string }>,
  * }}
  */
 export function resolveModel(id) {
   const baseUrl = import.meta.env.BASE_URL ?? '/';
-  const modelUrl = `${baseUrl}models/${id}.glb`;
-  const materialOverridesUrl = `${baseUrl}material-overrides/${id}.json`;
-
-  const thumbnails = VIEW_IDS.map((view) => ({
-    id: view.id,
-    label: view.label,
-    imageUrl: `${baseUrl}thumbnails/${id}-${view.id}.jpg`
-  }));
-
   return {
     id,
     // For now the displayed name is just the ID. Later, when we add a real
     // database, this could become "Cushion Halo (NC12345)" etc.
     displayName: id,
-    modelUrl,
-    materialOverridesUrl,
-    thumbnails
+    modelUrl: `${baseUrl}models/${id}.glb`,
+    materialOverridesUrl: `${baseUrl}material-overrides/${id}.json`
   };
 }
 

@@ -4,7 +4,7 @@
 // What this file does, top to bottom:
 //   1. Mounts the empty layout (header, stage, overlay, controls, thumbs).
 //   2. Reads ?id=... from the URL. If missing -> "No preview selected." error.
-//   3. Builds the asset URLs (model + 4 thumbnails) for that ID.
+//   3. Builds the asset URLs for that ID (model GLB + optional overrides).
 //   4. Creates the Three.js scene and starts the render loop.
 //   5. Wires up the floating controls and the bottom thumbnail strip.
 //   6. Loads the .glb. On success, frames the model. On failure -> "Preview
@@ -114,7 +114,6 @@ function mount() {
   layout.controlsSlot.appendChild(controls.element);
 
   const thumbStrip = createThumbnailStrip({
-    thumbnails: resolved.thumbnails,
     onSelect: (viewId) => void goToView(viewId)
   });
 
@@ -259,8 +258,8 @@ function mount() {
       // Once the HDR environments have been resolved onto every material,
       // render the model from each preset angle and use the resulting JPEG
       // data URLs as the bottom-strip thumbnails. This replaces the F/S/T/P
-      // placeholders (or any pre-rendered files) with a live snapshot of
-      // the actual loaded model — no images in the repo required.
+      // placeholders with a live snapshot of the actual loaded model — the
+      // viewer keeps no thumbnail files on the server.
       envsApplied
         .then(() => {
           const thumbs = generateAngleThumbnails(viewer, frame);
