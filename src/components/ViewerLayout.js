@@ -18,6 +18,7 @@
  *   stage: HTMLElement,
  *   overlay: HTMLElement,
  *   controlsSlot: HTMLElement,
+ *   partSelectorSlot: HTMLElement,
  *   thumbnailsSlot: HTMLElement,
  * }}
  */
@@ -30,6 +31,7 @@ export function createViewerLayout() {
       <div class="nc-stage" data-slot="stage">
         <div class="nc-stage__overlay" data-slot="overlay"></div>
         <div class="nc-stage__controls" data-slot="controls"></div>
+        <div class="nc-stage__part-selector" data-slot="partSelector"></div>
       </div>
       <div class="nc-app__thumbs" data-slot="thumbnails"></div>
     </main>
@@ -41,6 +43,7 @@ export function createViewerLayout() {
     stage: root.querySelector('[data-slot="stage"]'),
     overlay: root.querySelector('[data-slot="overlay"]'),
     controlsSlot: root.querySelector('[data-slot="controls"]'),
+    partSelectorSlot: root.querySelector('[data-slot="partSelector"]'),
     thumbnailsSlot: root.querySelector('[data-slot="thumbnails"]')
   };
 }

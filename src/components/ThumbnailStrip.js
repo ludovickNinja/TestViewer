@@ -4,9 +4,9 @@
 // The four boxes along the bottom of the viewer. Each box represents a preset
 // camera angle: Front / Side / Top / Perspective.
 //
-// Each box tries to display a still image from /public/thumbnails/. If that
-// image is missing (or fails to load), it falls back to a labeled placeholder
-// so the customer never sees a broken-image icon.
+// Boxes start in a labeled placeholder state (single-glyph F / S / T / P).
+// Once the model loads, src/main.js calls setThumbnail(id, dataUrl) with a
+// freshly rendered preview of each angle, which fades in over the placeholder.
 //
 // Clicking a box smoothly moves the camera to that preset.
 // ----------------------------------------------------------------------------
@@ -14,18 +14,14 @@
 import { CAMERA_VIEWS } from '../three/cameraViews.js';
 
 /**
- * @typedef {Object} ThumbnailDefinition
- * @property {'front'|'side'|'top'|'perspective'} id
- * @property {string} label
- * @property {string|null} imageUrl
- */
-
-/**
  * @param {{
- *   thumbnails: ThumbnailDefinition[],
- *   onSelect: (id: ThumbnailDefinition['id']) => void,
+ *   onSelect: (id: import('../three/cameraViews.js').CameraViewId) => void,
  * }} options
- * @returns {{ element: HTMLElement, setActive: (id: ThumbnailDefinition['id']) => void }}
+ * @returns {{
+ *   element: HTMLElement,
+ *   setActive: (id: import('../three/cameraViews.js').CameraViewId) => void,
+ *   setThumbnail: (id: import('../three/cameraViews.js').CameraViewId, imageUrl: string) => void,
+ * }}
  */
 export function createThumbnailStrip(options) {
   const el = document.createElement('div');
@@ -36,66 +32,27 @@ export function createThumbnailStrip(options) {
   // Map of viewId -> button element, so setActive can highlight one at a time.
   const buttons = new Map();
 
-  for (const thumb of options.thumbnails) {
+  for (const view of CAMERA_VIEWS) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'nc-thumb';
     btn.setAttribute('role', 'tab');
-    btn.setAttribute('aria-label', `${thumb.label} view`);
-    btn.dataset.viewId = thumb.id;
+    btn.setAttribute('aria-label', `${view.label} view`);
+    btn.dataset.viewId = view.id;
 
-    // <img> for the still preview, <div> placeholder behind it as a fallback.
-    const img = document.createElement('img');
-    img.className = 'nc-thumb__img';
-    img.alt = '';
-    img.loading = 'lazy';
-    img.decoding = 'async';
-
+    // Single-letter glyph (F / S / T / P) sits behind every tile until the
+    // live-rendered image arrives via setThumbnail().
     const placeholder = document.createElement('div');
-    placeholder.className = 'nc-thumb__placeholder';
-    // Single-letter glyph (F / S / T / P) — quiet and elegant.
-    placeholder.textContent = thumb.label.charAt(0);
+    placeholder.className = 'nc-thumb__placeholder is-visible';
+    placeholder.textContent = view.label.charAt(0);
 
     const label = document.createElement('div');
     label.className = 'nc-thumb__label';
-    label.textContent = thumb.label;
+    label.textContent = view.label;
 
-    if (thumb.imageUrl) {
-      img.src = thumb.imageUrl;
-      // If the image 404s, ditch the <img> and show the placeholder instead.
-      img.addEventListener('error', () => {
-        img.remove();
-        placeholder.classList.add('is-visible');
-      });
-      img.addEventListener('load', () => {
-        img.classList.add('is-loaded');
-      });
-      btn.appendChild(img);
-      btn.appendChild(placeholder);
-    } else {
-      placeholder.classList.add('is-visible');
-      btn.appendChild(placeholder);
-    }
-
+    btn.appendChild(placeholder);
     btn.appendChild(label);
-    btn.addEventListener('click', () => options.onSelect(thumb.id));
-    buttons.set(thumb.id, btn);
-    el.appendChild(btn);
-  }
 
-  // Defensive: if a caller didn't pass a thumbnail for one of the preset
-  // views, still render a fallback button for it so all four are always
-  // available.
-  for (const view of CAMERA_VIEWS) {
-    if (buttons.has(view.id)) continue;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'nc-thumb';
-    btn.dataset.viewId = view.id;
-    btn.innerHTML = `
-      <div class="nc-thumb__placeholder is-visible">${view.label.charAt(0)}</div>
-      <div class="nc-thumb__label">${view.label}</div>
-    `;
     btn.addEventListener('click', () => options.onSelect(view.id));
     buttons.set(view.id, btn);
     el.appendChild(btn);
@@ -111,16 +68,19 @@ export function createThumbnailStrip(options) {
   }
 
   /**
-   * Swap in a freshly generated image for one of the preset views. Used by
-   * the viewer to replace the file-based or placeholder thumbnail with a
-   * live render of the loaded model.
+   * Swap in a freshly generated image for one of the preset views. Called by
+   * the viewer after the model loads to replace the F/S/T/P placeholders
+   * with live renders of the actual GLB.
    *
-   * @param {ThumbnailDefinition['id']} id
+   * @param {import('../three/cameraViews.js').CameraViewId} id
    * @param {string} imageUrl - Any valid <img> src (data URL, blob URL, http).
    */
   function setThumbnail(id, imageUrl) {
     const btn = buttons.get(id);
     if (!btn || !imageUrl) return;
+
+    // Any previous turntable filmstrip is replaced by the still image.
+    btn.querySelector('.nc-thumb__turntable')?.remove();
 
     const placeholder = btn.querySelector('.nc-thumb__placeholder');
     const existingImg = btn.querySelector('.nc-thumb__img');
@@ -143,5 +103,34 @@ export function createThumbnailStrip(options) {
     btn.insertBefore(img, btn.firstChild);
   }
 
-  return { element: el, setActive, setThumbnail };
+  /**
+   * Attach a filmstrip turntable to a tile. The strip is a tall image
+   * containing `frames` square frames stacked vertically; CSS animates
+   * `background-position-y` with `steps(frames)` so it plays as a 360°
+   * turntable on hover/focus without needing a video file.
+   *
+   * @param {import('../three/cameraViews.js').CameraViewId} id
+   * @param {string} filmstripUrl - Data URL of the tall multi-frame image.
+   * @param {number} frames - Number of frames stacked in the filmstrip.
+   */
+  function setTurntable(id, filmstripUrl, frames) {
+    const btn = buttons.get(id);
+    if (!btn || !filmstripUrl || !frames || frames < 2) return;
+
+    btn.querySelector('.nc-thumb__turntable')?.remove();
+
+    const turntable = document.createElement('div');
+    turntable.className = 'nc-thumb__turntable';
+    turntable.style.backgroundImage = `url("${filmstripUrl}")`;
+    // background-size height = frames * 100% stacks the strip vertically and
+    // background-position-y from 0 to (frames-1)/frames * 100% sweeps it.
+    turntable.style.backgroundSize = `100% ${frames * 100}%`;
+    turntable.style.setProperty('--nc-turntable-frames', String(frames));
+    // Step end so the last frame holds, then loops back to the first.
+    turntable.style.animationTimingFunction = `steps(${frames}, end)`;
+    btn.classList.add('nc-thumb--has-turntable');
+    btn.appendChild(turntable);
+  }
+
+  return { element: el, setActive, setThumbnail, setTurntable };
 }

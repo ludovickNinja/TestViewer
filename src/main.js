@@ -4,7 +4,7 @@
 // What this file does, top to bottom:
 //   1. Mounts the empty layout (header, stage, overlay, controls, thumbs).
 //   2. Reads ?id=... from the URL. If missing -> "No preview selected." error.
-//   3. Builds the asset URLs (model + 4 thumbnails) for that ID.
+//   3. Builds the asset URLs for that ID (model GLB + optional overrides).
 //   4. Creates the Three.js scene and starts the render loop.
 //   5. Wires up the floating controls and the bottom thumbnail strip.
 //   6. Loads the .glb. On success, frames the model. On failure -> "Preview
@@ -26,6 +26,7 @@ import { createErrorState } from './components/ErrorState.js';
 import { createThumbnailStrip } from './components/ThumbnailStrip.js';
 import { createThumbnailActions } from './components/ThumbnailActions.js';
 import { createViewerControls } from './components/ViewerControls.js';
+import { createPartSelector } from './components/PartSelector.js';
 
 import { createScene } from './three/createScene.js';
 import { loadModel } from './three/loadModel.js';
@@ -41,10 +42,18 @@ import { createInspector } from './three/inspector.js';
 import {
   captureAllAngles,
   captureCurrentView,
+  captureTurntableFilmstrip,
   generateAngleThumbnails
 } from './three/generateAngleThumbnails.js';
 import { triggerDownload } from './three/triggerDownload.js';
-import { fetchMaterialOverrides, readModelIdFromUrl, resolveModel } from './services/modelService.js';
+import { applyPartVisibility, detectRingParts } from './three/ringParts.js';
+import {
+  fetchMaterialOverrides,
+  readModelIdFromUrl,
+  readShowFromUrl,
+  resolveModel,
+  writeShowToUrl
+} from './services/modelService.js';
 
 const DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
 
@@ -106,7 +115,6 @@ function mount() {
   layout.controlsSlot.appendChild(controls.element);
 
   const thumbStrip = createThumbnailStrip({
-    thumbnails: resolved.thumbnails,
     onSelect: (viewId) => void goToView(viewId)
   });
 
@@ -216,25 +224,91 @@ function mount() {
       thumbStrip.setActive(DEFAULT_VIEW);
       thumbActions.setEnabled(true);
       loading.hide();
+
+      // Re-render the bottom-strip thumbnails from the live scene. Called
+      // after the HDR environments resolve, every time the part selector
+      // flips between engagement / band / both, and (debounced) whenever the
+      // debug inspector tweaks a material — so the strip always matches what
+      // the customer is actually looking at.
+      let thumbnailJobToken = 0;
+      function regenerateThumbnails() {
+        if (!activeFrame) return;
+        const job = ++thumbnailJobToken;
+        try {
+          const thumbs = generateAngleThumbnails(viewer, activeFrame);
+          if (job !== thumbnailJobToken) return; // a newer run superseded us
+          for (const view of CAMERA_VIEWS) {
+            const url = thumbs[view.id];
+            if (url) thumbStrip.setThumbnail(view.id, url);
+          }
+          // Premium touch: the Perspective tile gets a 12-frame turntable
+          // filmstrip that plays on hover/focus. Skipped on reduced-motion
+          // displays via CSS.
+          const perspective = CAMERA_VIEWS.find((v) => v.id === 'perspective');
+          if (perspective) {
+            const film = captureTurntableFilmstrip(viewer, activeFrame, perspective);
+            if (job === thumbnailJobToken && film?.url) {
+              thumbStrip.setTurntable('perspective', film.url, film.frames);
+            }
+          }
+        } catch (err) {
+          console.warn('[viewer] thumbnail regeneration failed', err);
+        }
+        viewer.requestRender();
+      }
+
+      // If the GLB exposes both an engagement-ring group and a matching-band
+      // group, show a small dropdown that lets the customer pick which part
+      // is visible. The ?show=engagement|band|all URL param seeds the initial
+      // choice; toggling the dropdown mirrors the choice back into the URL so
+      // a shared link reproduces the same state, AND re-renders the bottom
+      // strip so its tiles only show whatever part is currently visible.
+      const parts = detectRingParts(root);
+      if (parts.engagement && parts.band) {
+        const initial = readShowFromUrl() ?? 'all';
+        applyPartVisibility(parts, initial);
+        viewer.requestRender();
+        const selector = createPartSelector({
+          initial,
+          onChange: (value) => {
+            applyPartVisibility(parts, value);
+            writeShowToUrl(value);
+            viewer.requestRender();
+            regenerateThumbnails();
+          }
+        });
+        layout.partSelectorSlot.appendChild(selector.element);
+      } else if (readShowFromUrl()) {
+        // Only one (or neither) part is named, so the ?show= param has nothing
+        // to act on. Clear it so the URL bar reflects what's actually visible.
+        writeShowToUrl('all');
+      }
+
+      // Debounced inspector-driven re-render. lil-gui's onChange fires for
+      // every slider tick; 350 ms is long enough that dragging a roughness
+      // slider doesn't thrash but short enough that a single click-and-release
+      // tweak appears in the strip almost immediately.
+      let inspectorRegenTimer = 0;
+      const scheduleInspectorRegen = () => {
+        clearTimeout(inspectorRegenTimer);
+        inspectorRegenTimer = window.setTimeout(regenerateThumbnails, 350);
+      };
+
       inspector?.attach(root, {
         modelId: id,
         initialOverrides: overrides,
-        scale: frame.radius
+        scale: frame.radius,
+        onChange: scheduleInspectorRegen
       });
 
       // Once the HDR environments have been resolved onto every material,
       // render the model from each preset angle and use the resulting JPEG
       // data URLs as the bottom-strip thumbnails. This replaces the F/S/T/P
-      // placeholders (or any pre-rendered files) with a live snapshot of
-      // the actual loaded model — no images in the repo required.
+      // placeholders with a live snapshot of the actual loaded model — the
+      // viewer keeps no thumbnail files on the server.
       envsApplied
         .then(() => {
-          const thumbs = generateAngleThumbnails(viewer, frame);
-          for (const view of CAMERA_VIEWS) {
-            const url = thumbs[view.id];
-            if (url) thumbStrip.setThumbnail(view.id, url);
-          }
-          viewer.requestRender();
+          regenerateThumbnails();
         })
         .catch((err) => {
           console.warn('[viewer] angle thumbnail generation failed', err);

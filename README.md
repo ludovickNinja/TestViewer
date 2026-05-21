@@ -11,13 +11,15 @@ a backed-by-database production system later.
 > set to "Deploy from a branch" instead, Pages will publish raw source files
 > (which require a Vite build step to run) and the site will appear blank.
 
-## Three pages
+## Five pages
 
 | Path                     | What it is                                                          |
 | ------------------------ | ------------------------------------------------------------------- |
 | `/`                      | Landing page. Paste a preview code, or click **Test your luck**.    |
 | `/viewer/?id=NC12345`    | Customer-facing 3D viewer. Reads `id` from the URL and loads that model. |
 | `/builder/`              | Internal jewelry configurator. Pick a shank + head + metal preset and export a combined GLB or JSON spec. |
+| `/wedding-band/`         | Procedural wedding-band builder. Width, profile, comfort-fit, gold color & karat, thickness, finger size — and a live cost estimate. |
+| `/admin/`                | Pricing admin for the wedding-band cost estimator. Live metal spot prices, premium / density / labor / markup. |
 
 A customer receives a private link such as:
 
@@ -27,7 +29,8 @@ https://yourdomain.com/viewer/?id=NC12345
 
 If you share the bare site URL instead, they land on the entry page and can
 type in their code (or hit "Test your luck" to see a random sample). The
-builder is a separate internal tool — not linked from the landing page.
+builder, wedding band, and admin pages are internal tools — not linked from
+the landing page.
 
 ---
 
@@ -42,10 +45,13 @@ npm run build    # production build into ./dist
 npm run preview  # serve the production build locally
 ```
 
-Open `http://localhost:5173/` for the landing page,
-`http://localhost:5173/viewer/?id=sample-ring` for the viewer (after adding
-`public/models/sample-ring.glb`), or `http://localhost:5173/builder/` for the
-jewelry configurator.
+Open:
+
+- `http://localhost:5173/` — landing page
+- `http://localhost:5173/viewer/?id=sample-ring` — viewer (after adding `public/models/sample-ring.glb`)
+- `http://localhost:5173/builder/` — jewelry configurator
+- `http://localhost:5173/wedding-band/` — wedding band builder
+- `http://localhost:5173/admin/` — pricing admin
 
 ---
 
@@ -71,19 +77,7 @@ jewelry configurator.
    The viewer works for any valid ID, even one not listed here — the manifest
    only controls the random picker.
 
-3. (Optional) Add still images for the preset views in `public/thumbnails/`:
-
-   ```
-   public/thumbnails/NC12345-front.jpg
-   public/thumbnails/NC12345-side.jpg
-   public/thumbnails/NC12345-top.jpg
-   public/thumbnails/NC12345-perspective.jpg
-   ```
-
-   If a thumbnail is missing, the strip falls back to a labeled placeholder.
-   Square JPGs around 512x512 px work well.
-
-4. Share the preview URL:
+3. Share the preview URL:
 
    ```
    https://yourdomain.com/viewer/?id=NC12345
@@ -91,6 +85,84 @@ jewelry configurator.
 
 Filename rules: only letters, numbers, dashes, and underscores. Slashes and
 path traversal (`..`) are rejected by the URL sanitizer.
+
+The bottom-strip thumbnails (Front / Side / Top / Perspective) are always
+rendered live from the GLB after the HDR environments resolve — no JPGs to
+generate, name, or ship alongside the model. Drop in the `.glb` and the
+previews appear on first load.
+
+---
+
+## Viewer URL parameters
+
+| Param         | Values                                  | What it does |
+| ------------- | --------------------------------------- | ------------ |
+| `id`          | sanitized model id                      | Required. Picks which GLB to load. |
+| `show`        | `engagement` · `band` · `all` (default) | When a GLB contains both an engagement ring **and** a matching band as top-level groups, controls which part is visible. The dropdown chip above the thumbnail strip mirrors this state. |
+| `debug`       | `1`                                     | Enables the inspector + lil-gui overlay (see below). |
+
+Aliases accepted for `show`: `ring` → `engagement`; `matchingband` / `wedding` → `band`.
+
+---
+
+## Engagement ring + matching band in one GLB
+
+The viewer can ship an engagement ring and its matching band in a single
+`.glb`. When both are present, a floating **View** dropdown appears above the
+thumbnail strip with three choices:
+
+- **Show Both** (default) — `?show=all`
+- **Engagement Ring** — `?show=engagement`
+- **Matching Band** — `?show=band`
+
+Toggling the dropdown updates the URL via `history.replaceState`, so deep
+links to a specific part work out of the box. If only one of the two parts
+is present, the chip is hidden and a stale `?show=` param is cleared.
+
+### How to author it in Rhino
+
+Use two top-level **layers**, one per part. Rhino's glTF exporter turns each
+top-level layer into a named node in the GLB — which is exactly what the
+viewer matches against.
+
+| Part            | Layer name contains          | URL value |
+| --------------- | ---------------------------- | --------- |
+| Engagement ring | `engagement` or `ring`       | `engagement` |
+| Matching band   | `band` or `wedding`          | `band` |
+
+Inside each layer, follow the same mesh/material naming used everywhere else
+(see `docs/naming-cheat-sheet.md`). The grouping only drives show/hide — it
+doesn't change how materials are detected.
+
+---
+
+## Screenshots & download-all
+
+Two small icon buttons flank the bottom thumbnail strip:
+
+- **Left button — Screenshot.** Captures the current camera view as a square
+  JPEG (2048 px by default) and triggers a download named `<id>-view.jpg`.
+- **Right button — Download all angles.** Cycles through the four preset
+  views, captures each at full size, and downloads them as
+  `<id>-front.jpg` / `-side.jpg` / `-top.jpg` / `-perspective.jpg`. The
+  downloads are staggered so the browser asks "allow multiple downloads" once
+  and then accepts the rest as a batch.
+
+Both buttons are disabled until the model finishes loading. Capture is done
+on the live renderer (between two repaints) so the customer never sees the
+intermediate frames.
+
+### Premium touches on the strip
+
+- **Live previews.** The four strip tiles render from the loaded GLB after
+  the HDR environments resolve — no JPGs to ship.
+- **Hover turntable.** The Perspective tile also stores a 12-frame
+  filmstrip; hovering or focusing the tile plays a quick 360° spin via a
+  CSS `steps(12)` animation. Respects `prefers-reduced-motion`.
+- **Stays in sync.** Toggling the engagement ring / matching band selector
+  re-renders the strip so each tile only shows the part that's actually
+  visible. With `?debug=1`, material edits in the inspector also schedule a
+  debounced re-render so the strip reflects the latest tweaks.
 
 ---
 
@@ -114,14 +186,20 @@ To swap the HDRs, drop new files into `public/` and update `HDRI_CONFIG.metal.pa
 / `HDRI_CONFIG.gem.path` in `src/three/createScene.js`. `.hdr` and `.exr`
 extensions are picked up automatically (RGBELoader vs EXRLoader).
 
+The same scene/material pipeline is used by `/viewer/`, `/builder/`, and
+`/wedding-band/`, so a material looks identical no matter which page renders
+it.
+
 ---
 
 ## Debug inspector & per-material overrides
 
-Append `?debug=1` to any viewer URL to enable the debug overlay:
+Append `?debug=1` to the viewer **or** the wedding-band URL to enable the
+debug overlay:
 
 ```
 /viewer/?id=NC12345&debug=1
+/wedding-band/?debug=1
 ```
 
 What it gives you:
@@ -131,6 +209,9 @@ What it gives you:
   material props (`metalness`, `roughness`, `transmission`, `ior`,
   `clearcoat`, `envMapIntensity`, etc.).
 - Switch the selected material's env map between **metal**, **gem**, or **none** live.
+- Apply a one-shot preset from the shared library (`src/data/materialPresets.json`)
+  — metals (10K/14K/18K yellow / white / rose, platinum, silver) and gems
+  (diamond, moissanite, sapphire, ruby, emerald, amethyst, topaz, citrine).
 - Inspect / tweak scene-wide settings (lights, camera, tone mapping) and
   export the current values as a preset.
 
@@ -156,15 +237,15 @@ purpose so override files can't drift into arbitrary mutations.
 
 `/builder/` is a self-contained internal page for assembling a ring from a
 **shank** + **head** + **metal preset** and exporting the result. It lives in
-`src/builder/` and intentionally does not share code with the customer viewer
-so the builder cannot regress `/viewer/`.
+`src/builder/` and shares the viewer's scene/material pipeline so the export
+matches what the customer sees.
 
 Catalog and metals live in JSON:
 
 - `src/data/builderCatalog.json` — list of shanks and heads, each with an `id`,
   display `name`, GLB `file` path, and `defaultMetal` id.
-- `src/data/builderMetals.json` — the metal presets (yellow / white / rose
-  gold, platinum) with `color`, `metalness`, `roughness`.
+- `src/data/materialPresets.json` — the shared metal + gem preset library
+  (used by the builder, the wedding band, and the inspector).
 
 GLB files for parts go in:
 
@@ -183,6 +264,68 @@ Click any mesh to select it; the side panel lets you rename it, tag it
 (`shank` / `head` / other), and apply any metal preset. **Export GLB**
 produces a single combined file; **Export JSON** writes a build spec that
 references catalog ids.
+
+---
+
+## The Wedding Band Builder (`/wedding-band/`)
+
+`/wedding-band/` builds a wedding band entirely from code — no GLB required.
+You pick:
+
+- **Width** (2.0–8.0 mm) and **thickness** (1.2–3.0 mm)
+- **Profile** (flat, half-round, knife-edge, …) with an optional **edge bevel**
+- **Comfort fit** (true concave inner arc) on/off
+- **Gold color** (yellow / white / rose / platinum / sterling silver) and,
+  for golds, **karat** (10K / 14K / 18K)
+- **Finger size** (US 4 – 13, in half steps; mapped to inside diameter via
+  `src/data/wedding-bandConfig.json`)
+
+The cross-section is profiled and revolved into a procedural mesh by
+`wedding-bandGeometry.js`, then dropped into the same scene the viewer uses
+(HDR envs, ACESFilmic tone mapping, on-demand rendering). The HDR
+environments resolve before the mesh is added, so the first paint already
+has correct reflections — no "plastic-then-shiny" pop.
+
+### Live cost estimate
+
+The right-hand panel shows a running price for the current configuration:
+
+```
+spotPerGram = spotPricePerOzUSD / 31.1034768
+pricePerGram = spotPerGram * purityFraction + premiumPerGramUSD
+band $       = pricePerGram * massGrams + laborUSD
+final $      = band $ * (1 + markupPct / 100)
+```
+
+Mass comes from `computeBandWeight.js`, which integrates the chosen
+cross-section over the inside circumference. Spot prices come from Stooq via
+`spotPriceService.js` (gold / silver / platinum, USD/oz, cached for the day
+and auto-refreshed after 10:00 London time). If the live fetch fails and no
+snapshot is cached, the `fallbackSpot` block in `pricingConfig.json` keeps
+the page working.
+
+---
+
+## Pricing Admin (`/admin/`)
+
+`/admin/` is the authoring surface for the per-device pricing overrides used
+by the wedding-band cost estimator. It is **browser-local** — values are
+saved to `localStorage` under `noam.carver.pricing.v1` and never leave the
+device. Reset restores the bundled defaults.
+
+What you can edit:
+
+- **Spot prices** — read-only summary of the latest Stooq pull (gold / silver
+  / platinum, USD/oz). A "Refresh now" button forces a re-fetch.
+- **Metals table** — `densityGPerCc` and `premiumPerGramUSD` per
+  (karat × color). The computed `$/g` is shown read-only next to each row so
+  you can see the impact of a premium change at a glance. Purity and
+  `spotMetal` (the metal whose spot price drives the calculation) aren't
+  editable — they describe the alloy.
+- **Labor** (flat USD per band) and **Markup** (%).
+
+Defaults live in `src/data/pricingConfig.json`. The admin page merges those
+defaults with any localStorage overrides each time it loads.
 
 ---
 
@@ -217,17 +360,19 @@ a manual base, for example `VITE_BASE=/ npm run build`.
 ```
 .
 ├── index.html                   # Landing page
-├── viewer/
-│   └── index.html               # Viewer page
-├── builder/
-│   └── index.html               # Builder page (jewelry configurator)
+├── viewer/index.html            # Viewer page
+├── builder/index.html           # Builder page (jewelry configurator)
+├── wedding-band/index.html      # Wedding band builder page
+├── admin/index.html             # Pricing admin page
 ├── package.json
 ├── vite.config.js
+├── docs/
+│   ├── naming-cheat-sheet.md    # Mesh + material naming conventions
+│   └── test-ring.md             # Rhino export workflow for the viewer
 ├── public/
 │   ├── branding/noam-carver-logo.svg
 │   ├── models/                  # Customer preview GLBs + README
 │   ├── models.json              # IDs available to "Test your luck"
-│   ├── thumbnails/              # Optional still-image previews
 │   ├── env_metal_014.hdr        # Metal HDR environment
 │   ├── env_gem_001.exr          # Gem HDR environment
 │   ├── material-overrides/      # Per-model <id>.materials.json sidecars
@@ -235,13 +380,24 @@ a manual base, for example `VITE_BASE=/ npm run build`.
 ├── src/
 │   ├── landing.js               # Landing page logic
 │   ├── main.js                  # Viewer page logic
-│   ├── components/              # Header / Layout / Loading / Error / Thumbs / Controls
-│   ├── three/                   # Scene / Loader / Camera fitting / Presets / Cleanup / Inspector
-│   ├── builder/                 # Builder page: scene, loader, materials, selection, export, UI
-│   ├── data/                    # builderCatalog.json, builderMetals.json
+│   ├── components/              # Header / Layout / Loading / Error / Thumbs /
+│   │                            #   ThumbnailActions / Controls / PartSelector
+│   ├── three/                   # Scene / Loader / Camera fitting / Presets /
+│   │                            #   Cleanup / Inspector / Angle capture /
+│   │                            #   Ring-parts detector
+│   ├── builder/                 # Builder page: scene, loader, materials,
+│   │                            #   selection, export, UI
+│   ├── wedding-band/            # Wedding band builder: geometry, UI, main
+│   ├── admin/                   # Pricing admin page entry
+│   ├── pricing/                 # pricingService / spotPriceService /
+│   │                            #   computeBandWeight
+│   ├── data/                    # builderCatalog, materialPresets,
+│   │                            #   wedding-bandConfig, pricingConfig
 │   ├── services/
-│   │   └── modelService.js      # URL sanitization, asset URL resolution, manifest fetch
-│   └── styles/                  # base.css, viewer.css, landing.css, builder.css
+│   │   └── modelService.js      # URL sanitization (id, show), asset URL
+│   │                            #   resolution, manifest fetch
+│   └── styles/                  # base / viewer / landing / builder /
+│                                #   wedding-band / admin
 └── .github/workflows/deploy.yml
 ```
 
@@ -254,11 +410,19 @@ and why. If you've never touched Three.js before, a good reading order is:
    `applyMaterialEnvironments`.
 4. `src/three/loadModel.js`, `fitCameraToObject.js`, `cameraViews.js`,
    `disposeScene.js` — the rest of the 3D layer.
-5. `src/three/inspector.js` — the `?debug=1` overlay and overrides export.
-6. `src/components/*.js` — small, framework-free DOM helpers.
-7. `src/services/modelService.js` — URL parsing and asset paths.
-8. `src/builder/builderMain.js` — entry point for the builder page; the rest
-   of `src/builder/` is the scene, loader, materials, selection, export, and UI.
+5. `src/three/generateAngleThumbnails.js` — square capture used by the strip
+   and the two download buttons.
+6. `src/three/ringParts.js` — engagement-ring vs matching-band detection.
+7. `src/three/inspector.js` — the `?debug=1` overlay and overrides export.
+8. `src/components/*.js` — small, framework-free DOM helpers.
+9. `src/services/modelService.js` — URL parsing and asset paths.
+10. `src/builder/builderMain.js` — entry point for the builder page; the rest
+    of `src/builder/` is the scene, loader, materials, selection, export, and UI.
+11. `src/wedding-band/wedding-bandMain.js` — entry point for the procedural
+    band builder; `wedding-bandGeometry.js` is the math, `wedding-bandUI.js`
+    is the panel.
+12. `src/pricing/*.js` + `src/admin/adminMain.js` — pricing pipeline and the
+    authoring surface for it.
 
 ---
 
@@ -297,11 +461,15 @@ Workflow:
 Content:
 - [ ] Model metadata fields (metal, stone, order version, customer notes,
       approval status)
-- [ ] Multiple models per preview
+- [x] Multiple parts per preview (engagement ring + matching band, with
+      `?show=` URL filter)
 - [ ] Multiple still images per preview
-- [ ] Automatic screenshot generation for thumbnails
+- [x] Automatic screenshot generation for thumbnails (always rendered from
+      the GLB at load time — no JPGs on the server)
+- [x] Download current view / download all 4 angles as JPEG
 - [ ] Annotations / hotspots on the model
 - [x] Material / metal switching (builder + per-material overrides)
+- [x] Procedural wedding-band builder with live cost estimate
 - [ ] Diamond / stone display options
 - [ ] AR preview
 
@@ -314,6 +482,7 @@ Performance & quality:
 Operations:
 - [ ] Analytics for link views
 - [ ] Auto-generate `models.json` at build time so adding a GLB is one step
+- [x] Live spot-price pull for the cost estimator (Stooq, cached daily)
 
 ---
 
