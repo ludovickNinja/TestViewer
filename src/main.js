@@ -42,7 +42,7 @@ import { createInspector } from './three/inspector.js';
 import {
   captureAllAngles,
   captureCurrentView,
-  captureTurntableFilmstrip,
+  captureTurntableFrames,
   generateAngleThumbnails
 } from './three/generateAngleThumbnails.js';
 import { triggerDownload } from './three/triggerDownload.js';
@@ -242,13 +242,14 @@ function mount() {
             if (url) thumbStrip.setThumbnail(view.id, url);
           }
           // Premium touch: the Perspective tile gets a 12-frame turntable
-          // filmstrip that plays on hover/focus. Skipped on reduced-motion
-          // displays via CSS.
+          // that plays on hover/focus by swapping the <img> src through each
+          // pre-rendered frame, so the ring stays centered in the tile.
+          // Skipped on reduced-motion displays inside setTurntable.
           const perspective = CAMERA_VIEWS.find((v) => v.id === 'perspective');
           if (perspective) {
-            const film = captureTurntableFilmstrip(viewer, activeFrame, perspective);
-            if (job === thumbnailJobToken && film?.url) {
-              thumbStrip.setTurntable('perspective', film.url, film.frames);
+            const turntable = captureTurntableFrames(viewer, activeFrame, perspective);
+            if (job === thumbnailJobToken && turntable.length >= 2) {
+              thumbStrip.setTurntable('perspective', turntable);
             }
           }
         } catch (err) {

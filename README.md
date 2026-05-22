@@ -156,9 +156,10 @@ intermediate frames.
 
 - **Live previews.** The four strip tiles render from the loaded GLB after
   the HDR environments resolve — no JPGs to ship.
-- **Hover turntable.** The Perspective tile also stores a 12-frame
-  filmstrip; hovering or focusing the tile plays a quick 360° spin via a
-  CSS `steps(12)` animation. Respects `prefers-reduced-motion`.
+- **Hover turntable.** The Perspective tile also stores 12 pre-rendered
+  frames; hovering or focusing the tile swaps the visible `<img>` src
+  through each frame on a JS timer, so the ring stays centered in the tile
+  while rotating in place. Respects `prefers-reduced-motion`.
 - **Stays in sync.** Toggling the engagement ring / matching band selector
   re-renders the strip so each tile only shows the part that's actually
   visible. With `?debug=1`, material edits in the inspector also schedule a
