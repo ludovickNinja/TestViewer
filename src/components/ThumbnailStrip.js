@@ -31,6 +31,11 @@ export function createThumbnailStrip(options) {
 
   // Map of viewId -> button element, so setActive can highlight one at a time.
   const buttons = new Map();
+  // Map of viewId -> teardown callback for an active turntable, so a second
+  // setTurntable() call (e.g. after a part-selector toggle) replaces the
+  // previous one cleanly without leaking listeners or intervals.
+  /** @type {Map<string, () => void>} */
+  const turntableTeardowns = new Map();
 
   for (const view of CAMERA_VIEWS) {
     const btn = document.createElement('button');
@@ -79,8 +84,13 @@ export function createThumbnailStrip(options) {
     const btn = buttons.get(id);
     if (!btn || !imageUrl) return;
 
-    // Any previous turntable filmstrip is replaced by the still image.
-    btn.querySelector('.nc-thumb__turntable')?.remove();
+    // Tear down any previous turntable so its interval can't keep firing
+    // against the <img> we're about to replace.
+    const previousTurntable = turntableTeardowns.get(id);
+    if (previousTurntable) {
+      previousTurntable();
+      turntableTeardowns.delete(id);
+    }
 
     const placeholder = btn.querySelector('.nc-thumb__placeholder');
     const existingImg = btn.querySelector('.nc-thumb__img');
@@ -104,32 +114,82 @@ export function createThumbnailStrip(options) {
   }
 
   /**
-   * Attach a filmstrip turntable to a tile. The strip is a tall image
-   * containing `frames` square frames stacked vertically; CSS animates
-   * `background-position-y` with `steps(frames)` so it plays as a 360°
-   * turntable on hover/focus without needing a video file.
+   * Attach a turntable preview to a tile. Each call supplies an array of
+   * pre-rendered JPEG data URLs (one per frame); on hover or keyboard focus
+   * a JS timer swaps the visible <img>'s src through the frames, so each
+   * frame is its own naturally-centered square — the ring stays in the
+   * middle of the tile, no vertical drift.
    *
    * @param {import('../three/cameraViews.js').CameraViewId} id
-   * @param {string} filmstripUrl - Data URL of the tall multi-frame image.
-   * @param {number} frames - Number of frames stacked in the filmstrip.
+   * @param {string[]} frames - Pre-rendered frames in playback order.
+   * @param {{ fps?: number }} [options]
    */
-  function setTurntable(id, filmstripUrl, frames) {
+  function setTurntable(id, frames, options = {}) {
     const btn = buttons.get(id);
-    if (!btn || !filmstripUrl || !frames || frames < 2) return;
+    if (!btn || !Array.isArray(frames) || frames.length < 2) return;
 
-    btn.querySelector('.nc-thumb__turntable')?.remove();
+    // Tear down any previous turntable on this tile.
+    const previous = turntableTeardowns.get(id);
+    if (previous) {
+      previous();
+      turntableTeardowns.delete(id);
+    }
 
-    const turntable = document.createElement('div');
-    turntable.className = 'nc-thumb__turntable';
-    turntable.style.backgroundImage = `url("${filmstripUrl}")`;
-    // background-size height = frames * 100% stacks the strip vertically and
-    // background-position-y from 0 to (frames-1)/frames * 100% sweeps it.
-    turntable.style.backgroundSize = `100% ${frames * 100}%`;
-    turntable.style.setProperty('--nc-turntable-frames', String(frames));
-    // Step end so the last frame holds, then loops back to the first.
-    turntable.style.animationTimingFunction = `steps(${frames}, end)`;
+    // Respect reduced-motion: leave the still tile as-is.
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+
+    // Preload every frame as a real <img> so the swap is instant — the
+    // browser caches decoded data and reuses it for the visible <img>.
+    const preload = frames.map((src) => {
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = src;
+      return img;
+    });
+
+    const img = btn.querySelector('.nc-thumb__img');
+    if (!img) return;
+    // Snapshot the still frame so we can restore it on pointer leave.
+    const restingSrc = img.src;
+
+    const fps = options.fps ?? 15;
+    const tickMs = Math.max(16, 1000 / fps);
+    let timer = 0;
+    let frameIndex = 0;
+
+    const tick = () => {
+      frameIndex = (frameIndex + 1) % frames.length;
+      img.src = frames[frameIndex];
+    };
+    const start = () => {
+      if (timer) return;
+      frameIndex = 0;
+      timer = window.setInterval(tick, tickMs);
+    };
+    const stop = () => {
+      if (!timer) return;
+      window.clearInterval(timer);
+      timer = 0;
+      img.src = restingSrc;
+    };
+
+    btn.addEventListener('pointerenter', start);
+    btn.addEventListener('pointerleave', stop);
+    btn.addEventListener('focus', start);
+    btn.addEventListener('blur', stop);
     btn.classList.add('nc-thumb--has-turntable');
-    btn.appendChild(turntable);
+
+    turntableTeardowns.set(id, () => {
+      stop();
+      btn.removeEventListener('pointerenter', start);
+      btn.removeEventListener('pointerleave', stop);
+      btn.removeEventListener('focus', start);
+      btn.removeEventListener('blur', stop);
+      btn.classList.remove('nc-thumb--has-turntable');
+      // Drop the preload references so the cached frames can be GC'd next
+      // time the user navigates a part toggle.
+      preload.length = 0;
+    });
   }
 
   return { element: el, setActive, setThumbnail, setTurntable };

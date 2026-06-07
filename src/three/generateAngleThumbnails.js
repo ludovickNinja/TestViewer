@@ -144,19 +144,19 @@ export function generateAngleThumbnails(viewer, frame) {
 }
 
 /**
- * Render a turntable filmstrip — a tall image with N square frames stacked
- * vertically, swept around the model at the chosen view's elevation. The
- * thumbnail strip plays it back with a CSS steps() animation on hover so the
- * customer sees a quick 360° preview without a video file.
+ * Render a turntable preview — N square JPEG frames swept around the model
+ * at the chosen view's elevation. The thumbnail strip plays them back by
+ * swapping the visible <img>'s src on a JS timer on hover, so each frame is
+ * its own naturally-centered square instead of a vertically-scrolling strip.
  *
  * @param {ReturnType<typeof import('./createScene.js').createScene>} viewer
  * @param {import('./fitCameraToObject.js').ModelFrame} frame
  * @param {import('./cameraViews.js').CameraViewDefinition} view
  * @param {{ frames?: number, size?: number, quality?: number }} [options]
- * @returns {{ url: string, frames: number }}
+ * @returns {string[]} JPEG data URLs, one per frame, in playback order.
  */
-export function captureTurntableFilmstrip(viewer, frame, view, options = {}) {
-  const frames = options.frames ?? TURNTABLE_FRAMES;
+export function captureTurntableFrames(viewer, frame, view, options = {}) {
+  const frameCount = options.frames ?? TURNTABLE_FRAMES;
   const size = options.size ?? TURNTABLE_SIZE;
   const quality = options.quality ?? TURNTABLE_QUALITY;
   const { renderer, scene, camera, controls, canvas } = viewer;
@@ -169,25 +169,21 @@ export function captureTurntableFilmstrip(viewer, frame, view, options = {}) {
   // Pick a direction at the view's elevation so the turntable orbits at the
   // view's height (e.g. perspective sweeps three-quarter-style, front sweeps
   // at eye level). We keep the original vertical:horizontal ratio so frame 0
-  // of the filmstrip lines up with the still tile, then rebuild the
-  // horizontal component per frame.
+  // lines up with the still tile, then rebuild the horizontal component per
+  // frame.
   const baseDir = view.direction.clone();
   const horizMag = Math.hypot(baseDir.x, baseDir.z);
   // Pure top-down views have no horizontal component to orbit around; fall
-  // back to a gentle three-quarter elevation so the filmstrip still spins.
+  // back to a gentle three-quarter elevation so the orbit still spins.
   const elevation = horizMag > 1e-6 ? baseDir.y / horizMag : 1.5;
   const startAngle = horizMag > 1e-6 ? Math.atan2(baseDir.z, baseDir.x) : 0;
-  // We render frames into a tall canvas so the result is a single image
-  // playable via CSS background-position animation.
-  const filmstrip = document.createElement('canvas');
-  filmstrip.width = size;
-  filmstrip.height = size * frames;
-  const ctx = filmstrip.getContext('2d');
 
+  /** @type {string[]} */
+  const results = [];
   const tmpDir = new Vector3();
   withSquareViewport(viewer, size, () => {
-    for (let i = 0; i < frames; i++) {
-      const angle = startAngle + (i / frames) * Math.PI * 2;
+    for (let i = 0; i < frameCount; i++) {
+      const angle = startAngle + (i / frameCount) * Math.PI * 2;
       tmpDir.set(Math.cos(angle), elevation, Math.sin(angle));
       const pos = computeViewPosition(
         { ...view, direction: tmpDir },
@@ -197,8 +193,7 @@ export function captureTurntableFilmstrip(viewer, frame, view, options = {}) {
       camera.position.copy(pos);
       camera.lookAt(frame.center);
       renderer.render(scene, camera);
-      // drawImage from the renderer's canvas into the filmstrip canvas.
-      ctx.drawImage(canvas, 0, i * size, size, size);
+      results.push(canvas.toDataURL('image/jpeg', quality));
     }
   });
 
@@ -208,8 +203,5 @@ export function captureTurntableFilmstrip(viewer, frame, view, options = {}) {
   controls.autoRotate = prevAutoRotate;
   renderer.render(scene, camera);
 
-  return {
-    url: filmstrip.toDataURL('image/jpeg', quality),
-    frames
-  };
+  return results;
 }
