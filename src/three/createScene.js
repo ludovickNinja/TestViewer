@@ -40,6 +40,11 @@ import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
 import { createDiamondMaterial, shouldUseDiamondShader } from './diamondShaderMaterial.js';
 import { applyPreset, findPreset } from './applyPreset.js';
 import materialPresets from '../data/materialPresets.json';
+import {
+  buildNameChain,
+  parseMaterialRole,
+  resolveEffectivePreset
+} from './materialNaming.js';
 
 // Mobile detection drives a few perf tradeoffs (lower pixel ratio cap, lower
 // transmission render target resolution, halved dispersion). We treat every
@@ -377,9 +382,12 @@ export function createScene(container, { canvasClass = 'viewer-canvas' } = {}) {
    * @param {import('three').Mesh} mesh
    * @param {import('three').Material} oldMat
    * @param {number} matIndex - Index in mesh.material if it's an array
+   * @param {{ preset?: string } | null} [override] - Resolved override so a
+   *   baked "moissanite" (or any gem preset) seeds construction from the right
+   *   preset rather than name heuristics alone.
    * @returns {import('three').Material}
    */
-  function swapToDiamondShader(mesh, oldMat, matIndex) {
+  function swapToDiamondShader(mesh, oldMat, matIndex, override = null) {
     // The BVH ray tracer requires WebGL2 (integer samplers, inverse(mat4)
     // built-in). Some Windows + older-driver combos quietly fall back to
     // WebGL1 — there the shader fails to compile and the mesh draws nothing,
@@ -387,7 +395,7 @@ export function createScene(container, { canvasClass = 'viewer-canvas' } = {}) {
     // MeshPhysicalMaterial with diamond-tuned transmission instead.
     const isWebGL2 = renderer.capabilities?.isWebGL2 === true;
 
-    const presetId = pickDiamondPresetId(oldMat, null, mesh);
+    const presetId = pickDiamondPresetId(oldMat, override, mesh);
     const preset = findPreset(materialPresets, presetId) || {};
 
     // Build the BVH path; createDiamondMaterial returns null if the geometry
@@ -474,17 +482,22 @@ export function createScene(container, { canvasClass = 'viewer-canvas' } = {}) {
    * override props (thickness, attenuationDistance) so values authored as
    * fractions of the piece survive a re-export at a different unit scale.
    *
+   * A `selection` object (from readMaterialSelectionFromUrl) layers runtime
+   * URL choices — ?metal=YW, ?head=R, ?stone=RB … — on top of the baked GLB
+   * names via the materialNaming convention.
+   *
    * @param {import('three').Object3D} root
    * @param {Record<string, Record<string, unknown>> | null} [overrides]
    * @param {number} [scale]
+   * @param {object | null} [selection]
    */
-  async function applyMaterialEnvironments(root, overrides = null, scale = 1) {
+  async function applyMaterialEnvironments(root, overrides = null, scale = 1, selection = null) {
     await envMapsReady;
     if (!environments.metal || !environments.gem) return;
 
     root.traverse((obj) => {
       if (!obj.isMesh) return;
-      processMeshMaterials(obj, overrides, scale);
+      processMeshMaterials(obj, overrides, scale, selection, root);
     });
     requestRender();
   }
@@ -497,20 +510,51 @@ export function createScene(container, { canvasClass = 'viewer-canvas' } = {}) {
    * @param {import('three').Mesh} obj
    * @param {Record<string, Record<string, unknown>> | null} overrides
    * @param {number} scale
+   * @param {object | null} [selection] - runtime URL material selection
+   * @param {import('three').Object3D | null} [root] - object added to the scene;
+   *   bounds the name-chain walk so a wrapper node can't inject tokens.
    */
-  function processMeshMaterials(obj, overrides, scale) {
+  function processMeshMaterials(obj, overrides, scale, selection = null, root = null) {
     const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
     for (let i = 0; i < mats.length; i++) {
       let mat = mats[i];
       if (!mat) continue;
 
-      // Override lookup falls back to the mesh name, since the GLB exporter
-      // commonly leaves materials with generic names like "Material.001"
-      // even when the mesh is "Diamond_Round".
-      const matOverride =
+      // --- Self-describing name → preset (no sidecar needed) ---------------
+      // Parse a role from the material/mesh/group name chain, resolve it
+      // against any runtime selection, and turn the result into an override
+      // object shaped exactly like a sidecar entry. Diamond/moissanite presets
+      // carry shader:"diamond"; other gems get shader:"physical" so the IOR
+      // heuristic can't mis-swap a coloured stone into the diamond shader.
+      // Only the customer viewer passes a `selection` object (main.js always
+      // does, even with no URL params). The builder / wedding-band / inspector
+      // pass null because they drive materials themselves — skip the naming
+      // convention there entirely so their behaviour is unchanged.
+      const role = selection !== null ? parseMaterialRole(buildNameChain(mat, obj, root)) : null;
+      const resolved = role ? resolveEffectivePreset(role, selection) : null;
+      let computed = null;
+      if (resolved && resolved.presetId) {
+        const preset = findPreset(materialPresets, resolved.presetId);
+        if (preset) {
+          computed = { ...preset, preset: resolved.presetId };
+          if (resolved.kind === 'gem' && preset.shader !== 'diamond') {
+            computed.shader = 'physical';
+          }
+        }
+      }
+
+      // Sidecar override lookup falls back to the mesh name, since the GLB
+      // exporter commonly leaves materials with generic names like
+      // "Material.001" even when the mesh is "Diamond_Round". A real sidecar
+      // entry wins field-by-field over the name-derived preset.
+      const sidecar =
         (overrides && mat.name && overrides[mat.name]) ||
         (overrides && obj.name && overrides[obj.name]) ||
         null;
+
+      const matOverride = computed || sidecar
+        ? { ...(computed || {}), ...(sidecar || {}) }
+        : null;
 
       // Diamond / moissanite path: replace with the refraction shader.
       // Skip when there's no equirect gem map to feed it.
@@ -522,11 +566,27 @@ export function createScene(container, { canvasClass = 'viewer-canvas' } = {}) {
           if (matOverride) applyOverrideToMaterial(mat, matOverride, scale);
           continue;
         }
-        mat = swapToDiamondShader(obj, mat, i);
+        mat = swapToDiamondShader(obj, mat, i, matOverride);
         if (Array.isArray(obj.material)) obj.material[i] = mat;
         else obj.material = mat;
         if (matOverride) applyOverrideToMaterial(mat, matOverride, scale);
         continue;
+      }
+
+      // Shared-material clone guard: a single MeshStandardMaterial is often
+      // shared across regions (e.g. ER shank + MB band). Two-tone is then
+      // impossible without cloning, since mutating one mutates both. If this
+      // material was already keyed to a *different* resolved preset, clone it
+      // before applying so each region keeps its own colour.
+      const roleKey = computed && computed.preset ? computed.preset : null;
+      if (roleKey) {
+        if (mat.userData.__roleKey && mat.userData.__roleKey !== roleKey) {
+          mat = mat.clone();
+          mats[i] = mat;
+          if (Array.isArray(obj.material)) obj.material[i] = mat;
+          else obj.material = mat;
+        }
+        mat.userData.__roleKey = roleKey;
       }
 
       const gem = isGemMaterial(mat);
@@ -549,11 +609,12 @@ export function createScene(container, { canvasClass = 'viewer-canvas' } = {}) {
    * @param {import('three').Mesh} mesh
    * @param {Record<string, Record<string, unknown>>} overrides
    * @param {number} scale
+   * @param {object | null} [selection]
    */
-  async function reapplyMeshMaterial(mesh, overrides, scale = 1) {
+  async function reapplyMeshMaterial(mesh, overrides, scale = 1, selection = null) {
     await envMapsReady;
     if (!environments.metal || !environments.gem) return;
-    processMeshMaterials(mesh, overrides, scale);
+    processMeshMaterials(mesh, overrides, scale, selection, null);
     requestRender();
   }
 

@@ -116,28 +116,68 @@ Examples:
 - `Sapphire_Pavé_01`
 - `Shank`, `Head`, `Prongs`, `Bezel`, `Gallery`
 
-### Material names
+### Material names — self-describing convention
 
 In Rhino, **Materials** panel → select the material → rename. Or use the
 glTF exporter's material editor.
 
-Recommended pattern:
+The viewer reads a naming convention straight off the material / mesh / group
+names, so a GLB **describes its own materials** and renders correctly with no
+sidecar JSON. A name is built from optional tokens (separated by `_`, `-`,
+`.` or space), in any order, case-insensitive:
 
 ```
-<Class>_<Subtype>
+<Part>_<Section>_<Metal|Gem>
 ```
+
+**Metals are colours, no karat.** There are exactly six, each with a
+one-letter code:
+
+| Code | Colour |
+| --- | --- |
+| `Y` | Yellow Gold |
+| `R` | Rose Gold |
+| `W` | White Gold |
+| `G` | Gun Metal |
+| `B` | Black Rhodium |
+| `T` | Tantalum |
+
+> Platinum and silver were removed — both read as "white", so any legacy
+> `Platinum` / `Silver` token resolves to White Gold.
+
+- **Part**: `ER` / `Engagement` / `Ring`, or `MB` / `Band` / `Wedding`.
+- **Section**: `Shank`, `Head` (`Setting`/`Prong`/`Basket`/`Crown`),
+  `Details` (`Accent`/`Melee`/`Pavé`/`Gallery`), `Band`, or `Stone`/`Gem`.
+- **Metal**: a code letter (`Y`,`R`,`W`,`G`,`B`,`T`) or a spelled-out colour
+  (`Yellow`, `Rose`, `White`, `Gunmetal`, `Black Rhodium`, `Tantalum`).
+- **Gem**: `Diamond` / `D`, `Moissanite` / `M`, `Sapphire`, `Ruby`,
+  `Emerald`, `Amethyst`, `Topaz`, `Citrine` (or codes `SB`,`SP`,`RB`,`EM`,
+  `AM`,`TB`,`CT`).
 
 Examples:
 
-- `Diamond_Center`, `Diamond_Side`
-- `Moissanite_Halo`
-- `Sapphire_Blue`, `Ruby_Red`, `Emerald_Pavé`
-- `Metal_Yellow_Gold_14k`, `Metal_White_Gold_18k`, `Metal_Platinum`,
-  `Metal_Rose_Gold_14k`
+- `ER_Shank_Y`, `ER_Head_W`, `ER_Details_R`
+- `MB_Band_W`
+- `ER_Head_Stone_D`, `Diamond_Center`, `Sapphire_Blue`, `Emerald_Pavé`
 
-> **Tip**: assign the same metal material to every metal part of the ring
-> (shank, head, prongs, bezel). One material = one set of overrides in the
-> sidecar JSON, much easier to tune.
+> **Tip**: assign the same metal material to every metal part of a section
+> (all shank meshes share one `Shank_W` material). One material = one colour
+> to drive. A bare section name with **no colour letter** (e.g. `Shank`) keeps
+> the GLB's own material untouched — add a letter to pin a colour.
+
+### Recolouring at runtime (URL params)
+
+Once named, any piece can be recoloured from the URL without re-exporting:
+
+- `?metal=R` — solid recolour everything. `?metal=YW` — two-tone
+  (base/shank = `Y`, top/head = `W`); `?metal=YWR` adds details = `R`.
+- `?er=YW&mb=W` — per-piece codes (engagement two-tone, band solid white).
+- `?shank=R`, `?head=G`, `?details=B`, `?band=W` — per-section overrides.
+- `?stone=RB` / `?er-stone=EM` — swap the gem.
+
+Precedence (most specific wins): per-part-section param → per-section param →
+per-piece code → global `?metal` → the baked GLB name. A sidecar JSON entry,
+if present, still overrides everything field-by-field.
 
 Each unique stone position can share a material (e.g. all halo stones use
 `Diamond_Halo`) **or** have its own (e.g. `Diamond_Center`,

@@ -43,10 +43,14 @@ import { bandVolumeM3, massGrams } from '../pricing/computeBandWeight.js';
 
 const DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
 
-// The band UI exposes the three gold colors plus platinum and sterling
-// silver. Karat (10K/14K/18K) is only meaningful for the golds — it doesn't
-// affect rendering, only pricing.
-const BAND_METAL_IDS = new Set(['yellow-gold', 'white-gold', 'rose-gold', 'platinum', 'silver']);
+// The band UI exposes the three gold colors. Platinum and sterling silver
+// were dropped from the shared metal palette (metals are now colours only —
+// both read as "white"), so they're no longer offered here. Karat
+// (10K/14K/18K) is only meaningful for the golds — it doesn't affect
+// rendering, only pricing. The newer colour metals (gun metal, black rhodium,
+// tantalum) are intentionally excluded because pricingConfig.json has no
+// spot/density entry for them yet.
+const BAND_METAL_IDS = new Set(['yellow-gold', 'white-gold', 'rose-gold']);
 const metals = listMetals({ filter: (id) => BAND_METAL_IDS.has(id) });
 const karats = [
   { id: '10k', label: '10K' },

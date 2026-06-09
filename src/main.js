@@ -49,6 +49,7 @@ import { triggerDownload } from './three/triggerDownload.js';
 import { applyPartVisibility, detectRingParts } from './three/ringParts.js';
 import {
   fetchMaterialOverrides,
+  readMaterialSelectionFromUrl,
   readModelIdFromUrl,
   readShowFromUrl,
   resolveModel,
@@ -233,7 +234,11 @@ function mount() {
       // attenuationDistance) are scaled by the model's bounding radius so
       // they don't go saturated/uniform on millimetre-scale exports or
       // diluted on metre-scale ones.
-      const envsApplied = viewer.applyMaterialEnvironments(root, overrides, frame.radius);
+      // Runtime material selection from the URL (?metal=, ?er=, ?head=,
+      // ?stone= …). Layered on top of the GLB's baked names by the viewer's
+      // material-naming convention; the sidecar (if any) still wins per field.
+      const selection = readMaterialSelectionFromUrl();
+      const envsApplied = viewer.applyMaterialEnvironments(root, overrides, frame.radius, selection);
       fitCameraToObject(viewer.camera, viewer.controls, frame);
       thumbStrip?.setActive(DEFAULT_VIEW);
       thumbActions?.setEnabled(true);
