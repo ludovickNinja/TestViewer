@@ -546,6 +546,15 @@ body:has(.nc-app) {
   display: none;
 }
 
+/* Embed mode (?embed=1): drop the header and bottom thumbnail strip so the
+   stage fills the iframe. The screenshot/download buttons live inside the
+   strip's slot, so hiding it removes those too; main.js also skips mounting
+   them. The floating orbit/reset/fullscreen controls are intentionally kept. */
+.nc-app--embed .nc-app__header,
+.nc-app--embed .nc-app__thumbs {
+  display: none;
+}
+
 .nc-app:fullscreen .nc-app__header,
 .nc-app:-webkit-full-screen .nc-app__header {
   background: transparent;
