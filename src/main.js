@@ -55,7 +55,13 @@ import {
   writeShowToUrl
 } from './services/modelService.js';
 
-const DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
+const viewerParams = new URLSearchParams(window.location.search);
+const DEBUG = viewerParams.get('debug') === '1';
+// Embed mode (?embed=1) strips the page chrome — header, bottom thumbnail
+// strip, and the screenshot/download buttons — leaving just the 3D stage and
+// its floating orbit/reset/fullscreen controls. Intended for dropping the
+// viewer into an <iframe> on a product page.
+const EMBED = viewerParams.get('embed') === '1';
 
 // The viewer page lives at /viewer/index.html, so the logo in /branding/
 // is one level up.
@@ -68,10 +74,12 @@ function mount() {
 
   // ---- 1. Build the empty layout ----
   const layout = createViewerLayout();
+  if (EMBED) layout.root.classList.add('nc-app--embed');
   appRoot.appendChild(layout.root);
 
-  const header = createHeader(logoUrl);
-  layout.headerSlot.appendChild(header.element);
+  // The header is skipped entirely in embed mode (see EMBED note above).
+  const header = EMBED ? null : createHeader(logoUrl);
+  if (header) layout.headerSlot.appendChild(header.element);
 
   // ---- 2. Read & validate the ID from the URL ----
   const id = readModelIdFromUrl();
@@ -87,7 +95,7 @@ function mount() {
 
   // ---- 3. Build asset URLs and show the model name in the header ----
   const resolved = resolveModel(id);
-  header.setModelName(resolved.displayName);
+  header?.setModelName(resolved.displayName);
 
   // ---- 4. Spin up Three.js ----
   const viewer = createScene(layout.stage);
@@ -114,11 +122,15 @@ function mount() {
   });
   layout.controlsSlot.appendChild(controls.element);
 
-  const thumbStrip = createThumbnailStrip({
-    onSelect: (viewId) => void goToView(viewId)
-  });
+  // In embed mode the bottom strip and the screenshot/download buttons are
+  // omitted; `goToView` and the load handler below guard on these being null.
+  const thumbStrip = EMBED
+    ? null
+    : createThumbnailStrip({
+        onSelect: (viewId) => void goToView(viewId)
+      });
 
-  const thumbActions = createThumbnailActions({
+  const thumbActions = EMBED ? null : createThumbnailActions({
     onScreenshot: () => {
       if (!activeFrame) return;
       try {
@@ -146,10 +158,12 @@ function mount() {
     }
   });
 
-  layout.thumbnailsSlot.appendChild(thumbActions.leading);
-  layout.thumbnailsSlot.appendChild(thumbStrip.element);
-  layout.thumbnailsSlot.appendChild(thumbActions.trailing);
-  thumbStrip.setActive(DEFAULT_VIEW);
+  if (thumbActions && thumbStrip) {
+    layout.thumbnailsSlot.appendChild(thumbActions.leading);
+    layout.thumbnailsSlot.appendChild(thumbStrip.element);
+    layout.thumbnailsSlot.appendChild(thumbActions.trailing);
+    thumbStrip.setActive(DEFAULT_VIEW);
+  }
 
   // Some browsers (mainly older Safari) use webkit-prefixed fullscreen APIs.
   const fullscreenSupported =
@@ -183,7 +197,7 @@ function mount() {
     const def = CAMERA_VIEWS.find((v) => v.id === viewId);
     if (!def) return;
     const target = computeViewPosition(def, viewer.camera, activeFrame);
-    thumbStrip.setActive(viewId);
+    thumbStrip?.setActive(viewId);
     await transitionCameraTo(viewer.camera, viewer.controls, target, activeFrame.center, 600);
   }
 
@@ -221,8 +235,8 @@ function mount() {
       // diluted on metre-scale ones.
       const envsApplied = viewer.applyMaterialEnvironments(root, overrides, frame.radius);
       fitCameraToObject(viewer.camera, viewer.controls, frame);
-      thumbStrip.setActive(DEFAULT_VIEW);
-      thumbActions.setEnabled(true);
+      thumbStrip?.setActive(DEFAULT_VIEW);
+      thumbActions?.setEnabled(true);
       loading.hide();
 
       // Re-render the bottom-strip thumbnails from the live scene. Called
@@ -233,6 +247,12 @@ function mount() {
       let thumbnailJobToken = 0;
       function regenerateThumbnails() {
         if (!activeFrame) return;
+        // No strip in embed mode — skip the offscreen angle renders entirely
+        // and just make sure the live model gets drawn.
+        if (!thumbStrip) {
+          viewer.requestRender();
+          return;
+        }
         const job = ++thumbnailJobToken;
         try {
           const thumbs = generateAngleThumbnails(viewer, activeFrame);
