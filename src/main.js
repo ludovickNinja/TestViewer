@@ -264,12 +264,14 @@ function mount() {
           // Premium touch: the Perspective tile gets a 12-frame turntable
           // that plays on hover/focus by swapping the <img> src through each
           // pre-rendered frame, so the ring stays centered in the tile.
-          // Skipped on reduced-motion displays inside setTurntable.
+          // A slow ~8fps spin (≈1.5s per revolution) keeps it calm and elegant
+          // rather than frantic. Skipped on reduced-motion displays inside
+          // setTurntable.
           const perspective = CAMERA_VIEWS.find((v) => v.id === 'perspective');
           if (perspective) {
             const turntable = captureTurntableFrames(viewer, activeFrame, perspective);
             if (job === thumbnailJobToken && turntable.length >= 2) {
-              thumbStrip.setTurntable('perspective', turntable);
+              thumbStrip.setTurntable('perspective', turntable, { fps: 8 });
             }
           }
         } catch (err) {
