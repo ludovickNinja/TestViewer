@@ -22,7 +22,7 @@
 import { Group, PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import { startCamera, stopCamera } from './cameraStream.js';
 import { closeHandTracker, detectHands, loadHandLandmarker } from './handTracker.js';
-import { computeRingTransform, guessHoleAxis } from './ringPlacement.js';
+import { computeRingTransform } from './ringPlacement.js';
 import { createTryOnOverlay } from '../components/TryOnOverlay.js';
 
 const AR_FOV_DEG = 50; // wider than the product camera's 10° — a natural "phone" fov
@@ -77,7 +77,6 @@ export function createARController({ viewer, stage, getRoot, getFrame, isMobile,
 
     // Overlay first, in "starting" state — the close button cancels setup.
     overlay = createTryOnOverlay({
-      initialAxis: guessHoleAxis(frame.size),
       onClose: () => exit()
     });
     stage.appendChild(overlay.element);
@@ -159,7 +158,7 @@ export function createARController({ viewer, stage, getRoot, getFrame, isMobile,
     }
 
     const now = performance.now();
-    const { landmarks } = detectHands(landmarker, video, now);
+    const { landmarks, handedLabels } = detectHands(landmarker, video, now);
     const hand = landmarks[0];
 
     const adjust = overlay.getAdjust();
@@ -175,7 +174,7 @@ export function createARController({ viewer, stage, getRoot, getFrame, isMobile,
             mirror: video.classList.contains('nc-ar__video--mirror')
           },
           frame,
-          axisIndex: adjust.axisIndex,
+          handedLabel: handedLabels[0] ?? null,
           rollRad: adjust.rollRad,
           scaleMultiplier: adjust.scaleMultiplier
         })

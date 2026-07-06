@@ -75,18 +75,31 @@ export async function loadHandLandmarker() {
  * Run detection on one video frame. `timestampMs` MUST strictly increase
  * across calls (VIDEO running mode requirement) — pass performance.now().
  *
+ * Besides the landmarks we also surface each hand's handedness label
+ * ('Left' / 'Right') — the placement math needs it to tell the palm side of
+ * the hand from the back (the two are mirror shapes, so geometry alone can't
+ * distinguish them).
+ *
  * @param {import('@mediapipe/tasks-vision').HandLandmarker} landmarker
  * @param {HTMLVideoElement} video
  * @param {number} timestampMs
- * @returns {{ landmarks: Landmark[][] }} `landmarks[0]` is the first hand's 21 points, or empty.
+ * @returns {{ landmarks: Landmark[][], handedLabels: (string | null)[] }}
+ *   `landmarks[0]` is the first hand's 21 points; `handedLabels[0]` its label.
  */
 export function detectHands(landmarker, video, timestampMs) {
-  if (!landmarker || !video || video.readyState < 2) return { landmarks: [] };
+  if (!landmarker || !video || video.readyState < 2) {
+    return { landmarks: [], handedLabels: [] };
+  }
   try {
     const result = landmarker.detectForVideo(video, timestampMs);
-    return { landmarks: result?.landmarks ?? [] };
+    const landmarks = result?.landmarks ?? [];
+    // Field name changed across tasks-vision releases (handednesses vs
+    // handedness) — accept either.
+    const rawHandedness = result?.handednesses ?? result?.handedness ?? [];
+    const handedLabels = landmarks.map((_, i) => rawHandedness[i]?.[0]?.categoryName ?? null);
+    return { landmarks, handedLabels };
   } catch {
-    return { landmarks: [] };
+    return { landmarks: [], handedLabels: [] };
   }
 }
 

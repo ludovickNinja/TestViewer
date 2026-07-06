@@ -472,7 +472,8 @@ Content:
 - [x] Material / metal switching (builder + per-material overrides)
 - [x] Procedural wedding-band builder with live cost estimate
 - [ ] Diamond / stone display options
-- [ ] AR preview
+- [x] AR preview (virtual try-on: hand tracking, ring anchored to the back of
+      the hand, size/rotate adjust)
 
 Performance & quality:
 - [ ] Draco / Meshopt compression
