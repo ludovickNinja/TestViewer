@@ -60,6 +60,10 @@ import {
 
 const viewerParams = new URLSearchParams(window.location.search);
 const DEBUG = viewerParams.get('debug') === '1';
+// AR try-on is a hidden mode while it's being tuned: the "Try it on" button
+// only appears with ?ar=1 in the URL (plus the usual camera-support check).
+// Flip this to always-on when the feature is ready for customers.
+const AR_ENABLED = viewerParams.get('ar') === '1';
 // Embed mode (?embed=1) strips the page chrome — header, bottom thumbnail
 // strip, and the screenshot/download buttons — leaving just the 3D stage and
 // its floating orbit/reset/fullscreen controls. Intended for dropping the
@@ -277,8 +281,9 @@ function mount() {
       thumbStrip?.setActive(DEFAULT_VIEW);
       thumbActions?.setEnabled(true);
       // Reveal the "Try it on" AR button now that there's a model to place on
-      // a finger — but only where the camera API is actually usable.
-      controls.setTryOnAvailable(isTryOnSupported());
+      // a finger — but only in hidden ?ar=1 mode, and only where the camera
+      // API is actually usable.
+      controls.setTryOnAvailable(AR_ENABLED && isTryOnSupported());
       loading.hide();
 
       // Re-render the bottom-strip thumbnails from the live scene. Called
