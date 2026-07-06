@@ -1,0 +1,178 @@
+/* NOAM CARVER — AR "try-on" mode.
+   Loaded by the viewer; only takes effect once the AR controller adds
+   `nc-stage--ar` to the stage. */
+
+/* When AR is active, the camera <video> sits behind the WebGL canvas.
+   `.viewer-canvas` is a static flow child, so lift both into an explicit
+   stacking order: video below (z 1), transparent canvas above (z 2). */
+.nc-stage--ar .nc-ar__video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
+  background: #000;
+}
+
+.nc-stage--ar .nc-ar__video--mirror {
+  transform: scaleX(-1);
+}
+
+.nc-stage--ar .viewer-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+
+/* Hide the product-mode floating controls and part selector while in AR —
+   the overlay drives everything from here. */
+.nc-stage--ar .nc-stage__controls,
+.nc-stage--ar .nc-stage__part-selector,
+.nc-stage--ar .nc-stage__overlay {
+  display: none;
+}
+
+/* The bottom thumbnail strip is a sibling of the stage, so it's hidden via a
+   class on the app root for a focused try-on view. */
+.nc-app--ar .nc-app__thumbs {
+  display: none;
+}
+
+/* ---------- Overlay chrome ---------- */
+
+.nc-ar {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.nc-ar > * {
+  pointer-events: auto;
+}
+
+.nc-ar__topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+}
+
+.nc-ar__back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px 14px 8px 10px;
+  border-radius: 999px;
+  background: rgba(19, 19, 22, 0.72);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.nc-ar__back:hover {
+  border-color: var(--color-border-strong);
+  background: rgba(19, 19, 22, 0.9);
+}
+
+.nc-ar__back svg {
+  width: 16px;
+  height: 16px;
+}
+
+.nc-ar__status {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--color-text);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+}
+
+.nc-ar.is-error .nc-ar__status {
+  color: #ffb4a2;
+}
+
+/* ---------- Manual adjust panel ---------- */
+
+.nc-ar__panel {
+  align-self: center;
+  width: min(420px, calc(100% - var(--space-6)));
+  margin-bottom: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-lg);
+  background: rgba(19, 19, 22, 0.72);
+  border: 1px solid var(--color-border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.nc-ar__slider {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.nc-ar__slider-label {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.nc-ar__slider input[type='range'] {
+  width: 100%;
+  accent-color: var(--color-accent);
+}
+
+.nc-ar__axis {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 7px 14px 7px 10px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.nc-ar__axis:hover {
+  border-color: var(--color-border-strong);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.nc-ar__axis svg {
+  width: 15px;
+  height: 15px;
+}
+
+.nc-ar__hint {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--color-muted);
+}
+
+@media (max-width: 720px) {
+  .nc-ar__panel {
+    margin-bottom: var(--space-4);
+  }
+}

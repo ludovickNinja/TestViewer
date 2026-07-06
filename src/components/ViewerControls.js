@@ -5,6 +5,7 @@
 //
 //   - Auto-rotate toggle
 //   - Reset view (returns to the default Perspective preset)
+//   - Try it on (AR mode — only shown where getUserMedia is available)
 //   - Fullscreen toggle (only shown if the browser supports it)
 //
 // The icons are inline SVGs so we don't need an icon font or extra files.
@@ -18,18 +19,24 @@ const ICONS = {
   expand:
     '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 5h5V3H3v7h2zm9-2v2h5v5h2V3zM5 14H3v7h7v-2H5zm14 5h-5v2h7v-7h-2z"/></svg>',
   collapse:
-    '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 16h3v3h2v-5H5zm3-8H5v2h5V5H8zm6 11h2v-3h3v-2h-5zm2-11V5h-2v5h5V8z"/></svg>'
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 16h3v3h2v-5H5zm3-8H5v2h5V5H8zm6 11h2v-3h3v-2h-5zm2-11V5h-2v5h5V8z"/></svg>',
+  // A hand — "try it on".
+  tryOn:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 11V4.5a1.5 1.5 0 0 1 3 0V10h.5V3.5a1.5 1.5 0 0 1 3 0V10h.5V5.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-1a6 6 0 0 1-5.2-3l-2.2-3.8a1.5 1.5 0 0 1 2.4-1.8L6 13V6.5a1.5 1.5 0 0 1 3 0z"/></svg>'
 };
 
 /**
  * @param {{
  *   onToggleAutoRotate: (enabled: boolean) => void,
  *   onResetView: () => void,
+ *   onToggleTryOn?: (active: boolean) => void,
  *   onToggleFullscreen: () => void,
  * }} callbacks
  * @returns {{
  *   element: HTMLElement,
  *   setAutoRotate: (enabled: boolean) => void,
+ *   setTryOnAvailable: (available: boolean) => void,
+ *   setTryOnActive: (active: boolean) => void,
  *   setFullscreenAvailable: (available: boolean) => void,
  *   setFullscreenActive: (active: boolean) => void,
  * }}
@@ -57,6 +64,18 @@ export function createViewerControls(callbacks) {
   resetBtn.title = 'Reset view';
   resetBtn.innerHTML = ICONS.reset;
 
+  // ---- Try it on (AR) ----
+  // Hidden by default; main.js reveals it via setTryOnAvailable() only where
+  // getUserMedia is usable (secure context + camera API present).
+  const tryOnBtn = document.createElement('button');
+  tryOnBtn.type = 'button';
+  tryOnBtn.className = 'nc-controls__btn';
+  tryOnBtn.setAttribute('aria-pressed', 'false');
+  tryOnBtn.setAttribute('aria-label', 'Try it on');
+  tryOnBtn.title = 'Try it on';
+  tryOnBtn.innerHTML = ICONS.tryOn;
+  tryOnBtn.style.display = 'none';
+
   // ---- Fullscreen ----
   const fsBtn = document.createElement('button');
   fsBtn.type = 'button';
@@ -67,9 +86,11 @@ export function createViewerControls(callbacks) {
 
   el.appendChild(rotateBtn);
   el.appendChild(resetBtn);
+  el.appendChild(tryOnBtn);
   el.appendChild(fsBtn);
 
   let autoRotate = false;
+  let tryOnActive = false;
 
   rotateBtn.addEventListener('click', () => {
     autoRotate = !autoRotate;
@@ -77,12 +98,29 @@ export function createViewerControls(callbacks) {
     callbacks.onToggleAutoRotate(autoRotate);
   });
   resetBtn.addEventListener('click', () => callbacks.onResetView());
+  tryOnBtn.addEventListener('click', () => {
+    setTryOnActive(!tryOnActive);
+    callbacks.onToggleTryOn?.(tryOnActive);
+  });
   fsBtn.addEventListener('click', () => callbacks.onToggleFullscreen());
 
   function setAutoRotate(enabled) {
     autoRotate = enabled;
     rotateBtn.classList.toggle('is-active', enabled);
     rotateBtn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+  }
+
+  function setTryOnAvailable(available) {
+    tryOnBtn.style.display = available ? '' : 'none';
+  }
+
+  // Reflect AR state on the button — also called by main.js when AR exits on
+  // its own (e.g. the overlay's "Back to viewer" button) so the toggle stays
+  // in sync with reality.
+  function setTryOnActive(active) {
+    tryOnActive = active;
+    tryOnBtn.classList.toggle('is-active', active);
+    tryOnBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
   }
 
   function setFullscreenAvailable(available) {
@@ -98,6 +136,8 @@ export function createViewerControls(callbacks) {
   return {
     element: el,
     setAutoRotate,
+    setTryOnAvailable,
+    setTryOnActive,
     setFullscreenAvailable,
     setFullscreenActive
   };
