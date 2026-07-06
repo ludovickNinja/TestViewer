@@ -100,6 +100,7 @@ previews appear on first load.
 | `id`          | sanitized model id                      | Required. Picks which GLB to load. |
 | `show`        | `engagement` · `band` · `all` (default) | When a GLB contains both an engagement ring **and** a matching band as top-level groups, controls which part is visible. The dropdown chip above the thumbnail strip mirrors this state. |
 | `debug`       | `1`                                     | Enables the inspector + lil-gui overlay (see below). |
+| `ar`          | `1`                                     | Reveals the "Try it on" AR button (hidden mode while the feature is being tuned; also requires camera support + HTTPS). |
 
 Aliases accepted for `show`: `ring` → `engagement`; `matchingband` / `wedding` → `band`.
 
@@ -472,7 +473,8 @@ Content:
 - [x] Material / metal switching (builder + per-material overrides)
 - [x] Procedural wedding-band builder with live cost estimate
 - [ ] Diamond / stone display options
-- [ ] AR preview
+- [x] AR preview (virtual try-on: hand tracking, ring anchored to the back of
+      the hand, size/rotate adjust)
 
 Performance & quality:
 - [ ] Draco / Meshopt compression
