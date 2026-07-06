@@ -19,15 +19,30 @@
 // intact behind the overlay's error message.
 // ----------------------------------------------------------------------------
 
-import { Group, PerspectiveCamera, Quaternion, Vector3 } from 'three';
+import {
+  CylinderGeometry,
+  Group,
+  Mesh,
+  MeshBasicMaterial,
+  PerspectiveCamera,
+  Quaternion,
+  Vector3
+} from 'three';
 import { startCamera, stopCamera } from './cameraStream.js';
 import { closeHandTracker, detectHands, loadHandLandmarker } from './handTracker.js';
-import { computeRingTransform } from './ringPlacement.js';
+import { computeRingTransform, estimateHoleRadius } from './ringPlacement.js';
 import { createTryOnOverlay } from '../components/TryOnOverlay.js';
 
 const AR_FOV_DEG = 50; // wider than the product camera's 10° — a natural "phone" fov
 const SMOOTH_ALPHA = 0.4; // EMA/slerp factor: higher = snappier, lower = smoother
 const HIDE_DELAY_MS = 150; // keep the ring visible briefly after a dropped frame
+
+// Finger occluder proportions, in the ring model's own units (the occluder
+// lives inside the scaled pivot). Radius hugs the ring's inner hole (slightly
+// inside it to avoid z-fighting with the band's inner surface); the length
+// extends well past the band on both sides so the whole far arc is masked.
+const OCCLUDER_RADIUS_FACTOR = 0.95;
+const OCCLUDER_LENGTH_FACTOR = 5;
 
 /**
  * @param {object} deps
@@ -51,6 +66,7 @@ export function createARController({ viewer, stage, getRoot, getFrame, isMobile,
   let landmarker = null;
   let arCamera = null;
   let pivot = null;
+  let occluder = null;
 
   // Saved product-mode state, restored on exit.
   let savedControlsEnabled = true;
@@ -140,6 +156,25 @@ export function createARController({ viewer, stage, getRoot, getFrame, isMobile,
     pivot.visible = false;
     viewer.scene.add(pivot);
     pivot.add(root); // reparent (keeps root's recenter transform)
+
+    // Finger occluder: an invisible cylinder along the finger axis (pivot
+    // local +Y = the ring's hole axis) that writes DEPTH but no color. The
+    // far arc of the band fails the depth test behind it and the camera
+    // video shows through instead — so the finger appears to pass through
+    // the ring rather than the ring lying on top of the finger. Rendered
+    // before the ring (renderOrder -1) so its depth is in place first.
+    const holeRadius = estimateHoleRadius(frame);
+    occluder = new Mesh(
+      new CylinderGeometry(
+        holeRadius * OCCLUDER_RADIUS_FACTOR,
+        holeRadius * OCCLUDER_RADIUS_FACTOR,
+        holeRadius * OCCLUDER_LENGTH_FACTOR,
+        24
+      ),
+      new MeshBasicMaterial({ colorWrite: false })
+    );
+    occluder.renderOrder = -1;
+    pivot.add(occluder);
 
     overlay.setStatus('Point your camera at your hand');
     loop();
@@ -232,12 +267,17 @@ export function createARController({ viewer, stage, getRoot, getFrame, isMobile,
       stage.closest('.nc-app')?.classList.remove('nc-app--ar');
 
       // Reparent the ring back to the scene (its local transform is untouched,
-      // so it re-centres exactly as before) and drop the pivot.
+      // so it re-centres exactly as before) and drop the pivot + occluder.
       const root = getRoot();
       if (pivot) {
         if (root) viewer.scene.add(root);
         viewer.scene.remove(pivot);
       }
+      if (occluder) {
+        occluder.geometry.dispose();
+        occluder.material.dispose();
+      }
+      occluder = null;
       pivot = null;
       arCamera = null;
       if (root) root.visible = true;

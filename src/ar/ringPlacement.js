@@ -20,10 +20,15 @@
 // resolved with MediaPipe's handedness label (a left palm and a right back
 // are mirror-identical shapes, so geometry alone can't tell them apart).
 //
-// MODEL-AXIS CONVENTION (fixed): the finger hole runs along the GLB's local
-// +Z and the stone points along local +Y. This matches our Rhino exports
-// (ring standing up, stone toward Rhino +Z, which the exporter's Y-up
-// conversion turns into glTF +Y with the hole through Z).
+// MODEL-AXIS DETECTION: which local axis the finger hole runs along depends
+// on how the ring was posed in Rhino — modeled flat on the ground plane
+// (hole along Rhino Z) exports with the hole along glTF +Y after the Z-up to
+// Y-up conversion, while modeled standing exports it along glTF Z. Real
+// GLBs in this repo have BOTH conventions, so the axis is auto-detected as
+// the THINNEST bounding-box dimension: a band is wide across its diameter in
+// the two directions perpendicular to the hole and only band-width thick
+// along it. A stone only inflates one radial direction, which is also why
+// the outer diameter is taken as the SMALLER of the two perpendicular dims.
 //
 // COORDINATE / DEPTH NOTE: monocular video gives no true metric depth, so we
 // place everything on a fixed working plane at `depth` in front of an AR
@@ -53,14 +58,57 @@ const PINKY_MCP = 17;
 // Empirical constants — tuned defaults, overridable via `opts`.
 const REST_FRACTION = 0.35; // how far up 13->14 the band rests (0 = at knuckle)
 const FINGER_WIDTH_K = 0.62; // finger width as a fraction of 13<->9 knuckle spacing
-const HOLE_RATIO = 0.65; // ring inner-hole diameter as a fraction of its outer diameter
 
-// The model's stone points along local +Y and the hole along local +Z (see
-// header). Aligning +Z onto the finger axis (shortest arc) happens to land
-// local +Y on the palm side, so a half-turn about the finger axis is baked in
-// to put the stone on the back of the hand. If a batch of exports shows the
-// stone palm-side, this offset (or the overlay's Rotate slider) is the knob.
-const STONE_ROLL_OFFSET = Math.PI;
+// Ring inner-hole diameter as a fraction of its outer diameter. Exported so
+// the AR controller can size the finger occluder to the same hole.
+export const HOLE_RATIO = 0.65;
+
+// Per-hole-axis roll offset (radians) applied on top of the user's Rotate
+// slider so the stone/decor lands on the back of the hand by default. For a
+// Z-hole model the shortest-arc Z->Y alignment sends the stone axis (+Y)
+// palm-side, hence the half turn; Y-hole models need none. Verified for the
+// Z case; the Rotate slider is the per-session fallback either way.
+const STONE_ROLL_OFFSET = [0, 0, Math.PI];
+
+/**
+ * Auto-detect which local axis the finger hole runs along: the thinnest
+ * bounding-box dimension (see header).
+ * @param {{ x: number, y: number, z: number }} size
+ * @returns {0 | 1 | 2}
+ */
+export function guessHoleAxis(size) {
+  if (!size) return 1;
+  const { x, y, z } = size;
+  if (x <= y && x <= z) return 0;
+  if (y <= x && y <= z) return 1;
+  return 2;
+}
+
+/**
+ * The ring's outer diameter in model units: the smaller of the two bounding
+ * dims perpendicular to the hole axis, so a tall center stone (which inflates
+ * only one radial direction) doesn't skew the estimate.
+ * @param {{ x: number, y: number, z: number }} size
+ * @param {0 | 1 | 2} holeAxis
+ * @returns {number}
+ */
+export function estimateOuterDiameter(size, holeAxis) {
+  if (!size) return 0;
+  const dims = [size.x, size.y, size.z];
+  const perp = dims.filter((_, i) => i !== holeAxis);
+  return Math.min(perp[0], perp[1]) || 0;
+}
+
+/**
+ * The ring's hole radius in model units — used by the AR controller to size
+ * the finger occluder cylinder.
+ * @param {{ radius: number, size: { x: number, y: number, z: number } }} frame
+ * @returns {number}
+ */
+export function estimateHoleRadius(frame) {
+  const outer = estimateOuterDiameter(frame.size, guessHoleAxis(frame.size)) || 2 * frame.radius;
+  return (outer / 2) * HOLE_RATIO;
+}
 
 /**
  * Map a normalized video-frame coord (0..1, top-left origin) to normalized
@@ -240,19 +288,27 @@ export function computeRingTransform(landmarks, params) {
   const basisMat = new Matrix4().makeBasis(side, fingerDir, faceNormal);
   const basisQuat = new Quaternion().setFromRotationMatrix(basisMat);
 
-  // Model alignment: local +Z (hole) onto the finger axis, then roll about the
-  // finger so the stone (+Y with the baked offset) lands on faceNormal.
-  const align = new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), new Vector3(0, 1, 0));
+  // Model alignment: rotate the detected hole axis onto local +Y (the slot
+  // the basis maps to the finger), then apply the user's roll about the
+  // finger plus the per-axis stone offset.
+  const holeAxis = guessHoleAxis(frame.size);
+  const axes = [new Vector3(1, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, 1)];
+  const align = new Quaternion().setFromUnitVectors(axes[holeAxis], new Vector3(0, 1, 0));
   const roll = new Quaternion().setFromAxisAngle(
     new Vector3(0, 1, 0),
-    rollRad + STONE_ROLL_OFFSET
+    rollRad + STONE_ROLL_OFFSET[holeAxis]
   );
   const quaternion = basisQuat.multiply(roll.multiply(align));
 
-  // Scale: fit the ring's outer diameter so its hole ~ the finger width.
+  // Scale: fit the ring's outer diameter so its hole ~ the finger width. The
+  // outer diameter comes from the dims perpendicular to the hole so a tall
+  // center stone doesn't shrink the band relative to the finger.
   const fingerWidth = FINGER_WIDTH_K * w13.distanceTo(w9);
   const targetOuter = fingerWidth / HOLE_RATIO;
-  const modelOuter = 2 * Math.max(frame.radius, 1e-4);
+  const modelOuter = Math.max(
+    estimateOuterDiameter(frame.size, holeAxis) || 2 * frame.radius,
+    1e-4
+  );
   const scale = (targetOuter / modelOuter) * scaleMultiplier;
 
   return { position, quaternion, scale };
