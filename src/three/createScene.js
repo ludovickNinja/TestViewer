@@ -200,7 +200,12 @@ export function createScene(container, { canvasClass = 'viewer-canvas' } = {}) {
 
   const renderer = new WebGLRenderer({
     antialias: true,
-    alpha: false,
+    // `alpha: true` so the AR "try-on" mode can clear to transparent and let a
+    // camera <video> layer show through behind the ring. It's a context-creation
+    // flag and can't be flipped after construction, so it has to be true from the
+    // start. Product mode is unaffected: scene.background stays an opaque Color
+    // and clearAlpha defaults to 1, so the grey studio background still fills.
+    alpha: true,
     powerPreference: 'high-performance'
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, RENDERER_CONFIG.pixelRatioCap));
@@ -616,6 +621,24 @@ export function createScene(container, { canvasClass = 'viewer-canvas' } = {}) {
   // scene, is enough to keep the canvas correct without a permanent rAF loop.
   controls.addEventListener('change', requestRender);
 
+  /**
+   * Toggle a transparent clear so a background layer (the AR try-on camera
+   * feed) can show through the canvas. When `on`, the scene background is
+   * removed and the renderer clears with alpha 0; when off, the opaque studio
+   * grey is restored. Used by the AR controller on enter/exit.
+   * @param {boolean} on
+   */
+  function setTransparentBackground(on) {
+    if (on) {
+      scene.background = null;
+      renderer.setClearAlpha(0);
+    } else {
+      scene.background = new Color(SCENE_CONFIG.backgroundColor);
+      renderer.setClearAlpha(1);
+    }
+    requestRender();
+  }
+
   function start() {
     if (running) return;
     running = true;
@@ -638,6 +661,7 @@ export function createScene(container, { canvasClass = 'viewer-canvas' } = {}) {
     start,
     stop,
     requestRender,
+    setTransparentBackground,
     applyMaterialEnvironments,
     reapplyMeshMaterial,
     environments,

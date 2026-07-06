@@ -18,6 +18,7 @@
 
 import './styles/base.css';
 import './styles/viewer.css';
+import './styles/ar.css';
 
 import { createHeader } from './components/Header.js';
 import { createViewerLayout } from './components/ViewerLayout.js';
@@ -47,6 +48,8 @@ import {
 } from './three/generateAngleThumbnails.js';
 import { triggerDownload } from './three/triggerDownload.js';
 import { applyPartVisibility, detectRingParts } from './three/ringParts.js';
+import { createARController } from './ar/arController.js';
+import { isTryOnSupported } from './ar/cameraStream.js';
 import {
   fetchMaterialOverrides,
   readModelIdFromUrl,
@@ -118,6 +121,36 @@ function mount() {
     onResetView: () => {
       void goToView(DEFAULT_VIEW);
     },
+    onToggleTryOn: async (active) => {
+      // Lazily build the AR controller on first use (its MediaPipe import is
+      // lazy too, so nothing AR-related loads until the customer opts in).
+      if (!ar) {
+        ar = createARController({
+          viewer,
+          stage: layout.stage,
+          getRoot: () => activeRoot,
+          getFrame: () => activeFrame,
+          isMobile: viewer.isMobile,
+          // Keep the toolbar button in sync when AR exits on its own (the
+          // overlay's "Back to viewer" button, or a setup error being dismissed).
+          onExit: () => controls.setTryOnActive(false)
+        });
+      }
+      if (active) {
+        if (!activeRoot || !activeFrame) {
+          controls.setTryOnActive(false);
+          return;
+        }
+        try {
+          await ar.enter();
+        } catch (err) {
+          console.error('[viewer] failed to enter try-on', err);
+          controls.setTryOnActive(false);
+        }
+      } else {
+        ar.exit();
+      }
+    },
     onToggleFullscreen: () => toggleFullscreen(layout.root)
   });
   layout.controlsSlot.appendChild(controls.element);
@@ -188,9 +221,14 @@ function mount() {
 
   // ---- Camera preset switching ----
   // `activeFrame` is set after the model loads. It holds the model's size
-  // info, which the camera presets need.
+  // info, which the camera presets need. `activeRoot` is the loaded ring group,
+  // hoisted so the AR try-on controller can drive its transform.
   /** @type {import('./three/fitCameraToObject.js').ModelFrame | null} */
   let activeFrame = null;
+  /** @type {import('three').Object3D | null} */
+  let activeRoot = null;
+  /** @type {ReturnType<typeof createARController> | null} */
+  let ar = null;
 
   async function goToView(viewId) {
     if (!activeFrame) return; // model not loaded yet
@@ -227,6 +265,7 @@ function mount() {
     .then(([{ root }, overrides]) => {
       const frame = frameModel(root);
       activeFrame = frame;
+      activeRoot = root;
       viewer.scene.add(root);
       // Assign the metal vs gem HDR per material, then apply the sidecar
       // overrides on top. Size-scoped props in overrides (thickness,
@@ -237,6 +276,9 @@ function mount() {
       fitCameraToObject(viewer.camera, viewer.controls, frame);
       thumbStrip?.setActive(DEFAULT_VIEW);
       thumbActions?.setEnabled(true);
+      // Reveal the "Try it on" AR button now that there's a model to place on
+      // a finger — but only where the camera API is actually usable.
+      controls.setTryOnAvailable(isTryOnSupported());
       loading.hide();
 
       // Re-render the bottom-strip thumbnails from the live scene. Called
@@ -354,6 +396,9 @@ function mount() {
   window.addEventListener('beforeunload', () => {
     abort.abort();
     ro.disconnect();
+    // Release the camera + hand tracker and restore scene state before we tear
+    // down the renderer.
+    ar?.exit();
     inspector?.dispose();
     disposeScene(viewer);
   });
