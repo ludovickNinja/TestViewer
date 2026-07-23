@@ -57,11 +57,16 @@ const PINKY_MCP = 17;
 
 // Empirical constants — tuned defaults, overridable via `opts`.
 const REST_FRACTION = 0.35; // how far up 13->14 the band rests (0 = at knuckle)
-const FINGER_WIDTH_K = 0.62; // finger width as a fraction of 13<->9 knuckle spacing
+// Finger width as a fraction of the ring<->middle knuckle spacing. Device
+// testing showed 0.62 oversized the ring; ~0.55 matches a real hand better.
+const FINGER_WIDTH_K = 0.55;
 
-// Ring inner-hole diameter as a fraction of its outer diameter. Exported so
-// the AR controller can size the finger occluder to the same hole.
-export const HOLE_RATIO = 0.65;
+// Ring inner-hole diameter as a fraction of its outer diameter. Real bands
+// are thin-walled: hole ~= 0.8-0.85 of the outer diameter (a 0.65 ratio
+// implies a 3-4 mm wall, which inflated the rendered ring ~25% on device).
+// Exported so the AR controller can size the finger occluder to the same
+// hole.
+export const HOLE_RATIO = 0.82;
 
 // Per-hole-axis roll offset (radians) applied on top of the user's Rotate
 // slider so the stone/decor lands on the back of the hand by default. For a
