@@ -30,7 +30,11 @@ import {
 } from 'three';
 import { startCamera, stopCamera } from './cameraStream.js';
 import { closeHandTracker, detectHands, loadHandLandmarker } from './handTracker.js';
-import { computeRingTransform, estimateHoleRadius } from './ringPlacement.js';
+import {
+  computeRingTransform,
+  estimateHoleRadius,
+  holeAlignQuaternion
+} from './ringPlacement.js';
 import { createTryOnOverlay } from '../components/TryOnOverlay.js';
 
 const AR_FOV_DEG = 50; // wider than the product camera's 10° — a natural "phone" fov
@@ -174,6 +178,11 @@ export function createARController({ viewer, stage, getRoot, getFrame, isMobile,
       new MeshBasicMaterial({ colorWrite: false })
     );
     occluder.renderOrder = -1;
+    // The pivot's rotation includes the model's hole-axis alignment, so a
+    // cylinder left at identity would follow the model's authoring axis, not
+    // the finger, for non-Y-hole GLBs. Counter-rotate by the inverse of the
+    // align so the cylinder's +Y axis always runs along the finger.
+    occluder.quaternion.copy(holeAlignQuaternion(frame.size).invert());
     pivot.add(occluder);
 
     overlay.setStatus('Point your camera at your hand');
