@@ -111,6 +111,20 @@ export function estimateHoleRadius(frame) {
 }
 
 /**
+ * The rotation that brings the model's detected hole axis onto local +Y —
+ * the slot computeRingTransform's basis maps to the finger. The occluder
+ * cylinder (whose native axis is +Y) must counter-rotate by the INVERSE of
+ * this so it runs along the finger for every authoring convention, not just
+ * Y-hole models.
+ * @param {{ x: number, y: number, z: number }} size
+ * @returns {Quaternion}
+ */
+export function holeAlignQuaternion(size) {
+  const axes = [new Vector3(1, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, 1)];
+  return new Quaternion().setFromUnitVectors(axes[guessHoleAxis(size)], new Vector3(0, 1, 0));
+}
+
+/**
  * Map a normalized video-frame coord (0..1, top-left origin) to normalized
  * device coords (-1..1, y up), accounting for `object-fit: cover` cropping and
  * optional horizontal mirroring of a front-facing camera.
@@ -168,26 +182,28 @@ function unproject(lm, depth, fovYRad, view, useZ = false) {
 }
 
 /**
- * Is the hand a RIGHT hand in OUR world space? Two chirality flips stack:
+ * Is the hand a RIGHT hand in OUR world space?
  *
- * 1. MediaPipe's handedness label assumes a MIRRORED (selfie) input frame,
- *    but the detector sees the RAW camera frame — so the label arrives
- *    physically swapped (a real right hand is labelled 'Left').
- * 2. Our world space flips x only when `mirror` is true (front camera),
- *    which flips chirality once more.
+ * DEVICE-CALIBRATED: an on-device test (front camera, mirrored) showed the
+ * stone landing on the palm side under the opposite mapping, so the
+ * tasks-vision handedness label evidently matches the PHYSICAL hand on the
+ * raw frame (the legacy "assumes mirrored input" note from MediaPipe Hands
+ * does not apply here). Only our own front-camera x-flip changes chirality:
  *
- *   mirror=false: world = raw frame  -> label 'Left'  => right hand in world
- *   mirror=true:  world = flipped    -> label 'Left'  => left hand in world
+ *   mirror=false: world = raw frame     -> label 'Right' => right hand in world
+ *   mirror=true:  world = flipped frame -> label 'Right' => left hand in world
  *
- * Kept as one tiny function so a device test that shows the stone landing
- * palm-side systematically has exactly one place to flip.
+ * Kept as one tiny function so any future evidence has exactly one place to
+ * flip. (Note: a wrong mapping here is indistinguishable from a 180° roll —
+ * if a re-test shows the stone palm-side on ONE hand but correct on the
+ * other, the roll offset is the culprit instead, not this.)
  *
  * @param {string | null} label - 'Left' | 'Right' from the detector.
  * @param {boolean} mirror
  * @returns {boolean}
  */
 export function isWorldRightHand(label, mirror) {
-  return mirror ? label === 'Right' : label === 'Left';
+  return mirror ? label === 'Left' : label === 'Right';
 }
 
 /**
@@ -292,8 +308,7 @@ export function computeRingTransform(landmarks, params) {
   // the basis maps to the finger), then apply the user's roll about the
   // finger plus the per-axis stone offset.
   const holeAxis = guessHoleAxis(frame.size);
-  const axes = [new Vector3(1, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, 1)];
-  const align = new Quaternion().setFromUnitVectors(axes[holeAxis], new Vector3(0, 1, 0));
+  const align = holeAlignQuaternion(frame.size);
   const roll = new Quaternion().setFromAxisAngle(
     new Vector3(0, 1, 0),
     rollRad + STONE_ROLL_OFFSET[holeAxis]
