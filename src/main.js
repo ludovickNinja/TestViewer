@@ -64,6 +64,10 @@ const DEBUG = viewerParams.get('debug') === '1';
 // only appears with ?ar=1 in the URL (plus the usual camera-support check).
 // Flip this to always-on when the feature is ready for customers.
 const AR_ENABLED = viewerParams.get('ar') === '1';
+// ?arcal=1 adds internal calibration sliders (finger-width factor and depth
+// tilt damping) with numeric readouts to the try-on overlay, so tuned values
+// can be read off a real hand and baked into DEFAULT_CALIBRATION.
+const AR_CALIBRATION = viewerParams.get('arcal') === '1';
 // Embed mode (?embed=1) strips the page chrome — header, bottom thumbnail
 // strip, and the screenshot/download buttons — leaving just the 3D stage and
 // its floating orbit/reset/fullscreen controls. Intended for dropping the
@@ -135,6 +139,7 @@ function mount() {
           getRoot: () => activeRoot,
           getFrame: () => activeFrame,
           isMobile: viewer.isMobile,
+          calibration: AR_CALIBRATION,
           // Keep the toolbar button in sync when AR exits on its own (the
           // overlay's "Back to viewer" button, or a setup error being dismissed).
           onExit: () => controls.setTryOnActive(false)

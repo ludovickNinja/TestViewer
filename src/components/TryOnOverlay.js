@@ -23,18 +23,24 @@ const ICONS = {
     '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18.3 5.71 12 12l6.3 6.29-1.42 1.42L10.59 13.4 4.29 19.7 2.88 18.3 9.17 12 2.88 5.71 4.29 4.29l6.3 6.3 6.29-6.3z"/></svg>'
 };
 
+import { DEFAULT_CALIBRATION } from '../ar/ringPlacement.js';
+
 /**
  * @param {object} opts
  * @param {() => void} opts.onClose
+ * @param {boolean} [opts.calibration=false] - show the internal calibration
+ *   sliders (?ar=1&arcal=1): live numeric tuning of the finger-width factor
+ *   and depth-tilt damping, so final values can be read off a real hand and
+ *   baked into DEFAULT_CALIBRATION.
  * @returns {{
  *   element: HTMLElement,
  *   setStatus: (text: string) => void,
  *   setError: (text: string) => void,
  *   setTracking: (tracking: boolean) => void,
- *   getAdjust: () => { scaleMultiplier: number, rollRad: number },
+ *   getAdjust: () => { scaleMultiplier: number, rollRad: number, fingerWidthK?: number, zDamp?: number },
  * }}
  */
-export function createTryOnOverlay({ onClose }) {
+export function createTryOnOverlay({ onClose, calibration = false }) {
   const el = document.createElement('div');
   el.className = 'nc-ar';
   el.setAttribute('role', 'group');
@@ -81,6 +87,35 @@ export function createTryOnOverlay({ onClose }) {
 
   panel.appendChild(scaleRow);
   panel.appendChild(rollRow);
+
+  // Internal calibration sliders (?arcal=1) with live numeric readouts. The
+  // dialled-in values are meant to be read off and baked into
+  // DEFAULT_CALIBRATION, then this mode goes unused.
+  let widthInput = null;
+  let tiltInput = null;
+  if (calibration) {
+    const calWidth = makeSlider({
+      label: 'Width K',
+      min: 0.3,
+      max: 0.8,
+      step: 0.005,
+      value: DEFAULT_CALIBRATION.fingerWidthK,
+      showValue: true
+    });
+    const calTilt = makeSlider({
+      label: 'Tilt Z',
+      min: 0,
+      max: 1.5,
+      step: 0.05,
+      value: DEFAULT_CALIBRATION.zDamp,
+      showValue: true
+    });
+    widthInput = calWidth.input;
+    tiltInput = calTilt.input;
+    panel.appendChild(calWidth.row);
+    panel.appendChild(calTilt.row);
+  }
+
   panel.appendChild(hint);
 
   el.appendChild(topbar);
@@ -107,20 +142,24 @@ export function createTryOnOverlay({ onClose }) {
   }
 
   function getAdjust() {
-    return {
+    const adjust = {
       scaleMultiplier: Number(scaleInput.value) || 1,
       rollRad: ((Number(rollInput.value) || 0) * Math.PI) / 180
     };
+    if (widthInput) adjust.fingerWidthK = Number(widthInput.value) || undefined;
+    if (tiltInput) adjust.zDamp = Number(tiltInput.value);
+    return adjust;
   }
 
   return { element: el, setStatus, setError, setTracking, getAdjust };
 }
 
 /**
- * Build a labelled range slider row.
+ * Build a labelled range slider row, optionally with a live numeric readout
+ * (used by the calibration sliders so values can be read off and reported).
  * @returns {{ row: HTMLElement, input: HTMLInputElement }}
  */
-function makeSlider({ label, min, max, step, value }) {
+function makeSlider({ label, min, max, step, value, showValue = false }) {
   const row = document.createElement('label');
   row.className = 'nc-ar__slider';
 
@@ -137,5 +176,18 @@ function makeSlider({ label, min, max, step, value }) {
 
   row.appendChild(span);
   row.appendChild(input);
+
+  if (showValue) {
+    const readout = document.createElement('span');
+    readout.className = 'nc-ar__value';
+    const render = () => {
+      readout.textContent = Number(input.value).toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+    };
+    render();
+    input.addEventListener('input', render);
+    row.appendChild(readout);
+    row.classList.add('nc-ar__slider--with-value');
+  }
+
   return { row, input };
 }

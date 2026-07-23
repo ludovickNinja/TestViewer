@@ -57,10 +57,18 @@ const PINKY_MCP = 17;
 
 // Empirical constants — tuned defaults, overridable via `opts`.
 const REST_FRACTION = 0.35; // how far up 13->14 the band rests (0 = at knuckle)
-// Finger width as a fraction of the ring<->middle knuckle spacing. Walked
-// down across device tests (0.62 -> 0.55 -> 0.49) as photos still showed the
-// ring wider than the finger.
-const FINGER_WIDTH_K = 0.49;
+
+// Device-tunable calibration defaults. Exposed as live sliders in the hidden
+// ?ar=1&arcal=1 calibration mode so final values can be dialled in on a real
+// hand and baked back here, instead of bisected across deploys.
+//   fingerWidthK: finger width as a fraction of the ring<->middle knuckle
+//     spacing (0.62 too big -> 0.49 too small on device; 0.52 splits it).
+//   zDamp: strength of MediaPipe's relative-depth cue on direction vectors
+//     (1.0 over-tilted toward the camera, 0.5 over-corrected; 0.7 splits it).
+export const DEFAULT_CALIBRATION = {
+  fingerWidthK: 0.52,
+  zDamp: 0.7
+};
 
 // Ring inner-hole diameter as a fraction of its outer diameter. Real bands
 // are thin-walled: hole ~= 0.8-0.85 of the outer diameter (a 0.65 ratio
@@ -169,25 +177,23 @@ export function mapVideoToNdc(nx, ny, view) {
  * @param {number} depth
  * @param {number} fovYRad
  * @param {object} view - see mapVideoToNdc.
- * @param {boolean} [useZ=false]
+ * @param {number} [zDamp=0] - strength of the landmark's relative-depth cue;
+ *   0 keeps the point on the working plane (used for positions), >0 folds
+ *   MediaPipe z into world z (used for direction vectors). Values around
+ *   0.5-1.0; MediaPipe magnitudes run hot, so <1 avoids over-tilting.
  * @returns {Vector3}
  */
-function unproject(lm, depth, fovYRad, view, useZ = false) {
+function unproject(lm, depth, fovYRad, view, zDamp = 0) {
   const { ndcX, ndcY } = mapVideoToNdc(lm.x, lm.y, view);
   const halfH = depth * Math.tan(fovYRad / 2);
   const halfW = halfH * (view.containerW / view.containerH);
   let z = -depth;
-  if (useZ && typeof lm.z === 'number') {
+  if (zDamp > 0 && typeof lm.z === 'number') {
     // One unit of normalized x spans the video's displayed width; z shares
     // that scale, so convert with the same world-units-per-normalized factor.
-    // Damped: MediaPipe z magnitudes run hot, and at full strength the ring
-    // visibly over-tilts toward the camera (device photos showed the band's
-    // interior above the finger). Half strength keeps the useful edge-on
-    // orientation cue without the exaggerated lean.
-    const Z_DAMP = 0.5;
     const scale = Math.max(view.containerW / view.videoW, view.containerH / view.videoH);
     const worldPerNorm = ((view.videoW * scale) / view.containerW) * 2 * halfW;
-    z = -depth - lm.z * worldPerNorm * Z_DAMP; // lm.z < 0 (closer) -> z toward camera
+    z = -depth - lm.z * worldPerNorm * zDamp; // lm.z < 0 (closer) -> z toward camera
   }
   return new Vector3(ndcX * halfW, ndcY * halfH, z);
 }
@@ -249,6 +255,10 @@ export function computeDorsalDir(wrist, indexMcp, pinkyMcp, isRight) {
  * @param {number} [params.depth=0.5] - working-plane distance.
  * @param {number} [params.rollRad=0] - user roll about the finger axis.
  * @param {number} [params.scaleMultiplier=1] - user scale slider.
+ * @param {number} [params.fingerWidthK] - calibration: finger width as a
+ *   fraction of the 13<->9 knuckle spacing (see DEFAULT_CALIBRATION).
+ * @param {number} [params.zDamp] - calibration: landmark-depth strength on
+ *   direction vectors (see DEFAULT_CALIBRATION).
  * @returns {{ position: Vector3, quaternion: Quaternion, scale: number } | null}
  *   null when the needed landmarks are absent (caller hides the ring).
  */
@@ -269,18 +279,20 @@ export function computeRingTransform(landmarks, params) {
     handedLabel = null,
     depth = 0.5,
     rollRad = 0,
-    scaleMultiplier = 1
+    scaleMultiplier = 1,
+    fingerWidthK = DEFAULT_CALIBRATION.fingerWidthK,
+    zDamp = DEFAULT_CALIBRATION.zDamp
   } = params;
 
   // Plane points for anything positional / screen-aligned…
   const w13 = unproject(p13, depth, fovYRad, view);
   const w9 = unproject(p9, depth, fovYRad, view);
   // …and depth-aware points for direction vectors.
-  const d0 = unproject(p0, depth, fovYRad, view, true);
-  const d5 = unproject(p5, depth, fovYRad, view, true);
-  const d13 = unproject(p13, depth, fovYRad, view, true);
-  const d14 = unproject(p14, depth, fovYRad, view, true);
-  const d17 = unproject(p17, depth, fovYRad, view, true);
+  const d0 = unproject(p0, depth, fovYRad, view, zDamp);
+  const d5 = unproject(p5, depth, fovYRad, view, zDamp);
+  const d13 = unproject(p13, depth, fovYRad, view, zDamp);
+  const d14 = unproject(p14, depth, fovYRad, view, zDamp);
+  const d17 = unproject(p17, depth, fovYRad, view, zDamp);
 
   // Position: a little way up the phalanx from the base knuckle, on the plane.
   const w14 = unproject(p14, depth, fovYRad, view);
@@ -329,7 +341,7 @@ export function computeRingTransform(landmarks, params) {
   // Scale: fit the ring's outer diameter so its hole ~ the finger width. The
   // outer diameter comes from the dims perpendicular to the hole so a tall
   // center stone doesn't shrink the band relative to the finger.
-  const fingerWidth = FINGER_WIDTH_K * w13.distanceTo(w9);
+  const fingerWidth = fingerWidthK * w13.distanceTo(w9);
   const targetOuter = fingerWidth / HOLE_RATIO;
   const modelOuter = Math.max(
     estimateOuterDiameter(frame.size, holeAxis) || 2 * frame.radius,
