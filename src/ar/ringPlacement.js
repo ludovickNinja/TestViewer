@@ -62,12 +62,15 @@ const REST_FRACTION = 0.35; // how far up 13->14 the band rests (0 = at knuckle)
 // ?ar=1&arcal=1 calibration mode so final values can be dialled in on a real
 // hand and baked back here, instead of bisected across deploys.
 //   fingerWidthK: finger width as a fraction of the ring<->middle knuckle
-//     spacing (0.62 too big -> 0.49 too small on device; 0.52 splits it).
-//   zDamp: strength of MediaPipe's relative-depth cue on direction vectors
-//     (1.0 over-tilted toward the camera, 0.5 over-corrected; 0.7 splits it).
+//     spacing.
+//   zDamp: strength of MediaPipe's relative-depth cue on direction vectors.
+// These values were dialled in on a real hand with the ?arcal=1 sliders
+// (2026-07-23). Note fingerWidthK landed at the slider's max — if the fit
+// still reads slightly small on more hands, widen the slider range and
+// re-calibrate rather than guessing.
 export const DEFAULT_CALIBRATION = {
-  fingerWidthK: 0.52,
-  zDamp: 0.7
+  fingerWidthK: 0.8,
+  zDamp: 0.3
 };
 
 // Ring inner-hole diameter as a fraction of its outer diameter. Real bands

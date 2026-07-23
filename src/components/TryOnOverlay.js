@@ -94,10 +94,12 @@ export function createTryOnOverlay({ onClose, calibration = false }) {
   let widthInput = null;
   let tiltInput = null;
   if (calibration) {
+    // Range widened after the first calibration pass landed exactly on the
+    // old 0.8 ceiling — keep headroom above the current default.
     const calWidth = makeSlider({
       label: 'Width K',
-      min: 0.3,
-      max: 0.8,
+      min: 0.4,
+      max: 1.2,
       step: 0.005,
       value: DEFAULT_CALIBRATION.fingerWidthK,
       showValue: true
