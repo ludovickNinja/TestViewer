@@ -101,6 +101,7 @@ previews appear on first load.
 | `show`        | `engagement` · `band` · `all` (default) | When a GLB contains both an engagement ring **and** a matching band as top-level groups, controls which part is visible. The dropdown chip above the thumbnail strip mirrors this state. |
 | `debug`       | `1`                                     | Enables the inspector + lil-gui overlay (see below). |
 | `ar`          | `1`                                     | Reveals the "Try it on" AR button (hidden mode while the feature is being tuned; also requires camera support + HTTPS). |
+| `arcal`       | `1`                                     | Internal: adds calibration sliders (finger-width factor, tilt damping) with numeric readouts to the try-on overlay. Use with `ar=1`. |
 
 Aliases accepted for `show`: `ring` → `engagement`; `matchingband` / `wedding` → `band`.
 

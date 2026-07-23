@@ -55,10 +55,19 @@ const OCCLUDER_LENGTH_FACTOR = 5;
  * @param {() => import('three').Object3D | null} deps.getRoot - the loaded ring root.
  * @param {() => (import('../three/fitCameraToObject.js').ModelFrame | null)} deps.getFrame
  * @param {boolean} deps.isMobile
+ * @param {boolean} [deps.calibration=false] - show internal calibration sliders.
  * @param {() => void} [deps.onExit] - called whenever an active session tears down.
  * @returns {{ enter: () => Promise<void>, exit: () => void, isActive: () => boolean }}
  */
-export function createARController({ viewer, stage, getRoot, getFrame, isMobile, onExit }) {
+export function createARController({
+  viewer,
+  stage,
+  getRoot,
+  getFrame,
+  isMobile,
+  calibration = false,
+  onExit
+}) {
   let active = false; // overlay is up (entering or running)
   let committed = false; // AR rendering has taken over
   let cancelled = false; // user closed during async setup
@@ -97,7 +106,8 @@ export function createARController({ viewer, stage, getRoot, getFrame, isMobile,
 
     // Overlay first, in "starting" state — the close button cancels setup.
     overlay = createTryOnOverlay({
-      onClose: () => exit()
+      onClose: () => exit(),
+      calibration
     });
     stage.appendChild(overlay.element);
     overlay.setStatus('Starting camera…');
@@ -220,7 +230,11 @@ export function createARController({ viewer, stage, getRoot, getFrame, isMobile,
           frame,
           handedLabel: handedLabels[0] ?? null,
           rollRad: adjust.rollRad,
-          scaleMultiplier: adjust.scaleMultiplier
+          scaleMultiplier: adjust.scaleMultiplier,
+          // Present only in ?arcal=1 mode; undefined falls back to
+          // DEFAULT_CALIBRATION inside computeRingTransform.
+          fingerWidthK: adjust.fingerWidthK,
+          zDamp: adjust.zDamp
         })
       : null;
 
