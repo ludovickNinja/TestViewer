@@ -159,13 +159,18 @@ function mount() {
   // so we can apply it as soon as both arrive. 404 is fine — it just means no
   // overrides have been authored for this model yet.
   //
-  // URL-supplied overrides (?material=NAME:VALUE) layer on top of the sidecar
-  // so a link can recolor a piece without editing JSON. The URL wins on
-  // collision — that's the whole point of the parameter.
+  // URL-supplied overrides (?material=NAME:VALUE) shallow-merge on top of the
+  // sidecar so a link can recolor a piece without editing JSON. Per-material
+  // props merge key-by-key, and the URL wins on collision.
   const urlOverrides = readMaterialOverridesFromUrl(window.location.search, materialPresets);
-  const overridesPromise = fetchMaterialOverrides(resolved.materialOverridesUrl).then(
-    (sidecar) => mergeOverrides(sidecar, urlOverrides)
-  );
+  const overridesPromise = fetchMaterialOverrides(resolved.materialOverridesUrl).then((sidecar) => {
+    if (!urlOverrides) return sidecar;
+    const out = { ...(sidecar || {}) };
+    for (const [name, props] of Object.entries(urlOverrides)) {
+      out[name] = { ...(out[name] || {}), ...props };
+    }
+    return out;
+  });
 
   Promise.all([
     loadModel({
@@ -237,26 +242,6 @@ function toggleFullscreen(target) {
   } else if (target.webkitRequestFullscreen) {
     void target.webkitRequestFullscreen();
   }
-}
-
-/**
- * Shallow-merge two override maps. Each map is `{ [name]: { ...props } }`; the
- * inner objects are merged per-key so a URL override can recolor a material
- * without dropping the sidecar's envMap/metalness/etc. Returns null when both
- * sides are empty so callers can keep their "no overrides" fast path.
- *
- * @param {Record<string, Record<string, unknown>> | null} a
- * @param {Record<string, Record<string, unknown>> | null} b - Wins on collision.
- */
-function mergeOverrides(a, b) {
-  if (!a && !b) return null;
-  if (!a) return b;
-  if (!b) return a;
-  const out = { ...a };
-  for (const [name, props] of Object.entries(b)) {
-    out[name] = { ...(out[name] || {}), ...props };
-  }
-  return out;
 }
 
 mount();
