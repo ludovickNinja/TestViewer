@@ -57,9 +57,10 @@ const PINKY_MCP = 17;
 
 // Empirical constants — tuned defaults, overridable via `opts`.
 const REST_FRACTION = 0.35; // how far up 13->14 the band rests (0 = at knuckle)
-// Finger width as a fraction of the ring<->middle knuckle spacing. Device
-// testing showed 0.62 oversized the ring; ~0.55 matches a real hand better.
-const FINGER_WIDTH_K = 0.55;
+// Finger width as a fraction of the ring<->middle knuckle spacing. Walked
+// down across device tests (0.62 -> 0.55 -> 0.49) as photos still showed the
+// ring wider than the finger.
+const FINGER_WIDTH_K = 0.49;
 
 // Ring inner-hole diameter as a fraction of its outer diameter. Real bands
 // are thin-walled: hole ~= 0.8-0.85 of the outer diameter (a 0.65 ratio
@@ -179,9 +180,14 @@ function unproject(lm, depth, fovYRad, view, useZ = false) {
   if (useZ && typeof lm.z === 'number') {
     // One unit of normalized x spans the video's displayed width; z shares
     // that scale, so convert with the same world-units-per-normalized factor.
+    // Damped: MediaPipe z magnitudes run hot, and at full strength the ring
+    // visibly over-tilts toward the camera (device photos showed the band's
+    // interior above the finger). Half strength keeps the useful edge-on
+    // orientation cue without the exaggerated lean.
+    const Z_DAMP = 0.5;
     const scale = Math.max(view.containerW / view.videoW, view.containerH / view.videoH);
     const worldPerNorm = ((view.videoW * scale) / view.containerW) * 2 * halfW;
-    z = -depth - lm.z * worldPerNorm; // lm.z < 0 (closer) -> z toward camera
+    z = -depth - lm.z * worldPerNorm * Z_DAMP; // lm.z < 0 (closer) -> z toward camera
   }
   return new Vector3(ndcX * halfW, ndcY * halfH, z);
 }
