@@ -24,6 +24,9 @@
 // opaque preview IDs to short-lived signed URLs against private storage.
 // ----------------------------------------------------------------------------
 
+import materialPresets from '../data/materialPresets.json';
+import { METAL_CODES, GEM_CODES, parseMetalCode } from '../three/materialNaming.js';
+
 // Allowed: A-Z, a-z, 0-9, dash, underscore. 1 to 64 chars.
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -74,6 +77,92 @@ export function writeShowToUrl(value) {
   if (value === 'all') url.searchParams.delete('show');
   else url.searchParams.set('show', value);
   window.history.replaceState(null, '', url);
+}
+
+// ---------------------------------------------------------------------------
+// Runtime material selection (?metal=, ?er=, ?mb=, per-section, ?stone=)
+// ---------------------------------------------------------------------------
+// Mirrors readShowFromUrl: read, validate against the preset library / code
+// maps, and drop anything that doesn't resolve so a typo'd param can never
+// inject an arbitrary value. The shape returned here is consumed by
+// resolveEffectivePreset() in materialNaming.js.
+
+const METAL_SECTIONS = ['shank', 'head', 'details', 'band'];
+const PART_SECTION_KEYS = ['er-shank', 'er-head', 'er-details', 'mb-band', 'mb-details'];
+
+/** Validate a compact metal code (1–3 letters, all known). Returns the
+ *  upper-cased code or null. */
+function sanitizeMetalCode(raw) {
+  if (!raw) return null;
+  const code = String(raw).trim().toUpperCase();
+  return parseMetalCode(code) ? code : null;
+}
+
+/** Resolve a single metal param: a one-letter code, or a full preset id. */
+function resolveMetalParam(raw) {
+  if (!raw) return null;
+  const v = String(raw).trim();
+  const up = v.toUpperCase();
+  if (METAL_CODES[up]) return METAL_CODES[up];
+  if (materialPresets.metals && materialPresets.metals[v.toLowerCase()]) return v.toLowerCase();
+  return null;
+}
+
+/** Resolve a gem param: a 1–2 letter gem code, or a full gem preset id. */
+function resolveGemParam(raw) {
+  if (!raw) return null;
+  const v = String(raw).trim();
+  const up = v.toUpperCase();
+  if (GEM_CODES[up]) return GEM_CODES[up];
+  if (materialPresets.gems && materialPresets.gems[v.toLowerCase()]) return v.toLowerCase();
+  return null;
+}
+
+/**
+ * Read the runtime material selection from the URL. Every value is validated
+ * against the preset library / code maps; unrecognised values are dropped.
+ *
+ * @param {string} [search] - Defaults to `window.location.search`.
+ * @returns {{
+ *   metalCode: string | null,
+ *   erCode: string | null,
+ *   mbCode: string | null,
+ *   sections: Record<string, string>,
+ *   partSections: Record<string, string>,
+ *   stoneId: string | null,
+ *   stones: Record<'engagement'|'band', string>
+ * }}
+ */
+export function readMaterialSelectionFromUrl(search = window.location.search) {
+  const p = new URLSearchParams(search);
+
+  const sections = {};
+  for (const sec of METAL_SECTIONS) {
+    const id = resolveMetalParam(p.get(sec));
+    if (id) sections[sec] = id;
+  }
+
+  const partSections = {};
+  for (const key of PART_SECTION_KEYS) {
+    const id = resolveMetalParam(p.get(key));
+    if (id) partSections[key] = id;
+  }
+
+  const stones = {};
+  const erStone = resolveGemParam(p.get('er-stone'));
+  if (erStone) stones.engagement = erStone;
+  const mbStone = resolveGemParam(p.get('mb-stone'));
+  if (mbStone) stones.band = mbStone;
+
+  return {
+    metalCode: sanitizeMetalCode(p.get('metal')),
+    erCode: sanitizeMetalCode(p.get('er')),
+    mbCode: sanitizeMetalCode(p.get('mb')),
+    sections,
+    partSections,
+    stoneId: resolveGemParam(p.get('stone')),
+    stones
+  };
 }
 
 /**

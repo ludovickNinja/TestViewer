@@ -25,21 +25,29 @@
       "envMap": "metal",
       "envMapIntensity": 2.5
     },
-    "platinum": {
-      "label": "Platinum",
-      "color": "#d9d9d9",
+    "gunmetal": {
+      "label": "Gun Metal",
+      "color": "#3a3d42",
       "metalness": 1,
-      "roughness": 0.12,
+      "roughness": 0.25,
       "envMap": "metal",
       "envMapIntensity": 1.1
     },
-    "silver": {
-      "label": "Sterling Silver",
-      "color": "#f0f0f0",
+    "black-rhodium": {
+      "label": "Black Rhodium",
+      "color": "#0a0a0a",
       "metalness": 1,
-      "roughness": 0.10,
+      "roughness": 0.07,
       "envMap": "metal",
-      "envMapIntensity": 1.1
+      "envMapIntensity": 1.2
+    },
+    "tantalum": {
+      "label": "Tantalum",
+      "color": "#4a4e54",
+      "metalness": 1,
+      "roughness": 0.35,
+      "envMap": "metal",
+      "envMapIntensity": 1.0
     }
   },
   "gems": {
