@@ -52,12 +52,14 @@ import { createARController } from './ar/arController.js';
 import { isTryOnSupported } from './ar/cameraStream.js';
 import {
   fetchMaterialOverrides,
+  readMaterialOverridesFromUrl,
   readMaterialSelectionFromUrl,
   readModelIdFromUrl,
   readShowFromUrl,
   resolveModel,
   writeShowToUrl
 } from './services/modelService.js';
+import materialPresets from './data/materialPresets.json';
 
 const viewerParams = new URLSearchParams(window.location.search);
 const DEBUG = viewerParams.get('debug') === '1';
@@ -262,7 +264,19 @@ function mount() {
   // Fetch the optional material-overrides sidecar in parallel with the model
   // so we can apply it as soon as both arrive. 404 is fine — it just means no
   // overrides have been authored for this model yet.
-  const overridesPromise = fetchMaterialOverrides(resolved.materialOverridesUrl);
+  //
+  // URL-supplied overrides (?material=NAME:VALUE) shallow-merge on top of the
+  // sidecar so a link can recolor a piece without editing JSON. Per-material
+  // props merge key-by-key, and the URL wins on collision.
+  const urlOverrides = readMaterialOverridesFromUrl(window.location.search, materialPresets);
+  const overridesPromise = fetchMaterialOverrides(resolved.materialOverridesUrl).then((sidecar) => {
+    if (!urlOverrides) return sidecar;
+    const out = { ...(sidecar || {}) };
+    for (const [name, props] of Object.entries(urlOverrides)) {
+      out[name] = { ...(out[name] || {}), ...props };
+    }
+    return out;
+  });
 
   Promise.all([
     loadModel({

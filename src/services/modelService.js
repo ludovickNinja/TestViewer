@@ -26,9 +26,19 @@
 
 import materialPresets from '../data/materialPresets.json';
 import { METAL_CODES, GEM_CODES, parseMetalCode } from '../three/materialNaming.js';
+import { findPreset } from '../three/applyPreset.js';
 
 // Allowed: A-Z, a-z, 0-9, dash, underscore. 1 to 64 chars.
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
+// Material/mesh names from GLB files plus override keys. Same alphabet as IDs
+// extended with dot (Blender's "Material.001"), space, and parentheses — anything
+// outside is a strong signal of injection or a malformed URL.
+const MATERIAL_NAME_PATTERN = /^[A-Za-z0-9_.\-\s()]{1,64}$/;
+
+// #rrggbb, with or without the leading #. (Matches how materialPresets.json
+// writes colors — 3-char shorthand isn't worth the extra branch.)
+const HEX_COLOR_PATTERN = /^#?[0-9a-fA-F]{6}$/;
 
 /**
  * Read the `id` query parameter from the current URL.
@@ -163,6 +173,44 @@ export function readMaterialSelectionFromUrl(search = window.location.search) {
     stoneId: resolveGemParam(p.get('stone')),
     stones
   };
+}
+
+/**
+ * Read `?material=NAME:VALUE` query entries into an override map matching the
+ * shape of the JSON sidecar at /public/material-overrides/<id>.json.
+ *
+ * Repeatable, one pair per entry. VALUE is a hex color (`#rrggbb` with or
+ * without `#`) or a preset ID from `presetsDoc` — bad values drop silently
+ * so a typo can't break the page.
+ *   ?material=HEAD:%23d4af37&material=SHANK:rose-gold
+ *
+ * @param {string} [search] - Defaults to `window.location.search`.
+ * @param {{ metals?: Record<string, object>, gems?: Record<string, object> } | null} [presetsDoc]
+ * @returns {Record<string, Record<string, unknown>> | null}
+ */
+export function readMaterialOverridesFromUrl(search = window.location.search, presetsDoc = null) {
+  const entries = new URLSearchParams(search).getAll('material');
+  if (entries.length === 0) return null;
+
+  const out = {};
+  for (const raw of entries) {
+    const sep = raw.indexOf(':');
+    if (sep <= 0 || sep === raw.length - 1) continue;
+    const name = raw.slice(0, sep);
+    const value = raw.slice(sep + 1);
+    if (!MATERIAL_NAME_PATTERN.test(name)) continue;
+
+    const override = parseMaterialOverrideValue(value, presetsDoc);
+    if (override) out[name] = override;
+  }
+  return out;
+}
+
+function parseMaterialOverrideValue(value, presetsDoc) {
+  if (HEX_COLOR_PATTERN.test(value)) {
+    return { color: value.startsWith('#') ? value : `#${value}` };
+  }
+  return findPreset(presetsDoc, value);
 }
 
 /**
