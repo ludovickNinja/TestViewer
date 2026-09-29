@@ -9,8 +9,8 @@
 //     parameters live via lil-gui
 //   - swap its environment map between the metal HDR, the gem HDR or none
 //   - one-shot apply a preset from the shared material library
-//     (src/data/materialPresets.json) — metals (yellow / white / rose gold,
-//     platinum, silver, gun metal, black rhodium, tantalum) and gems
+//     (src/data/materialPresets.json) — metals as colours only (yellow /
+//     white / rose gold, gun metal, black rhodium, tantalum) and gems
 //     (diamond, moissanite, sapphire, ruby, emerald, amethyst, topaz, citrine)
 //
 // Every material change is recorded into a per-material overrides map keyed

@@ -1,5 +1,5 @@
 {
-  "$comment": "Shared material preset library. All white metals (white-gold, platinum, silver) deliberately share one look — they exist as separate ids only for labels and wedding-band pricing. Two top-level groups: metals and gems. Each preset is a flat key/value map consumable by applyPreset() (src/three/applyPreset.js) and by the override-sidecar pipeline (createScene.js applyOverrideToMaterial). Numbers are starting points tuned against env_metal_014.hdr / env_gem_001.exr — refine via /viewer/?id=<id>&debug=1 and save back into per-model overrides under public/material-overrides/. NOTE: `thickness` and `attenuationDistance` are authored in *model-radius units* — the runtime multiplies them by frame.radius so the same preset reads correctly on millimetre- and metre-scale GLB exports.",
+  "$comment": "Shared material preset library. Two top-level groups: metals and gems. Each preset is a flat key/value map consumable by applyPreset() (src/three/applyPreset.js) and by the override-sidecar pipeline (createScene.js applyOverrideToMaterial). Numbers are starting points tuned against env_metal_014.hdr / env_gem_001.exr — refine via /viewer/?id=<id>&debug=1 and save back into per-model overrides under public/material-overrides/. NOTE: `thickness` and `attenuationDistance` are authored in *model-radius units* — the runtime multiplies them by frame.radius so the same preset reads correctly on millimetre- and metre-scale GLB exports.",
   "metals": {
     "yellow-gold": {
       "label": "Yellow Gold",
@@ -11,22 +11,6 @@
     },
     "white-gold": {
       "label": "White Gold",
-      "color": "#e8e8e8",
-      "metalness": 1,
-      "roughness": 0,
-      "envMap": "metal",
-      "envMapIntensity": 1.0
-    },
-    "platinum": {
-      "label": "Platinum",
-      "color": "#e8e8e8",
-      "metalness": 1,
-      "roughness": 0,
-      "envMap": "metal",
-      "envMapIntensity": 1.0
-    },
-    "silver": {
-      "label": "Sterling Silver",
       "color": "#e8e8e8",
       "metalness": 1,
       "roughness": 0,

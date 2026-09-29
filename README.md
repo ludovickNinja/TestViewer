@@ -103,7 +103,7 @@ previews appear on first load.
 | `ar`          | `1`                                     | Reveals the "Try it on" AR button (hidden mode while the feature is being tuned; also requires camera support + HTTPS). |
 | `arcal`       | `1`                                     | Internal: adds calibration sliders (finger-width factor, tilt damping) with numeric readouts to the try-on overlay. Use with `ar=1`. |
 | `material`    | `NAME:VALUE` (repeatable)               | Per-material override keyed by the GLB material or mesh name. `VALUE` is a hex colour (`%23d4af37`, i.e. `#d4af37` URL-encoded) or a preset id from `materialPresets.json` (`rose-gold`, `ruby`). Bad names/values drop silently. Example: `?material=HEAD:%23d4af37&material=SHANK:rose-gold`. |
-| `metal`       | 1–3 metal codes                         | Recolour every named metal part. One letter = solid (`?metal=R`), two = base + top (`?metal=YW`, shank yellow / head white), three adds details (`?metal=YWR`). Codes: `Y` yellow gold · `R` rose gold · `W` white gold (also platinum / silver, which share its look) · `G` gun metal · `B` black rhodium · `T` tantalum. |
+| `metal`       | 1–3 metal codes                         | Recolour every named metal part. One letter = solid (`?metal=R`), two = base + top (`?metal=YW`, shank yellow / head white), three adds details (`?metal=YWR`). Codes: `Y` yellow gold · `R` rose gold · `W` white gold · `G` gun metal · `B` black rhodium · `T` tantalum. |
 | `er` · `mb`   | metal codes                             | Same as `metal`, scoped to the engagement ring (`er`) or matching band (`mb`): `?er=YW&mb=W`. |
 | `shank` · `head` · `details` · `band` | metal code or preset id | Per-section override (`?head=G`). Prefix with `er-` / `mb-` to scope to one piece (`?er-head=G&mb-band=W`). |
 | `stone`       | gem code or preset id                   | Swap the stone: `D` diamond · `M` moissanite · `SB` / `SP` sapphire blue / pink · `RB` ruby · `EM` emerald · `AM` amethyst · `TB` topaz · `CT` citrine. `er-stone` / `mb-stone` scope to one piece. |
@@ -229,8 +229,8 @@ What it gives you:
   `clearcoat`, `envMapIntensity`, etc.).
 - Switch the selected material's env map between **metal**, **gem**, or **none** live.
 - Apply a one-shot preset from the shared library (`src/data/materialPresets.json`)
-  — metals (yellow / white / rose gold, platinum, sterling silver, gun metal,
-  black rhodium, tantalum; all white metals share one look) and gems
+  — metals as colours only (yellow / white / rose gold, gun metal, black
+  rhodium, tantalum) and gems
   (diamond, moissanite, sapphire, ruby, emerald, amethyst, topaz, citrine).
 - Inspect / tweak scene-wide settings (lights, camera, tone mapping) and
   export the current values as a preset.
@@ -295,8 +295,8 @@ You pick:
 - **Width** (2.0–8.0 mm) and **thickness** (1.2–3.0 mm)
 - **Profile** (flat, half-round, knife-edge, …) with an optional **edge bevel**
 - **Comfort fit** (true concave inner arc) on/off
-- **Metal** (yellow / white / rose gold, platinum, sterling silver — all
-  white metals share one look) and,
+- **Metal** (yellow / white / rose gold, platinum, sterling silver — platinum
+  and silver render as white gold; all white metals share one look) and,
   for golds, **karat** (10K / 14K / 18K)
 - **Finger size** (US 4 – 13, in half steps; mapped to inside diameter via
   `src/data/wedding-bandConfig.json`)

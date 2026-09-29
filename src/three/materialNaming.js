@@ -13,13 +13,12 @@
 //      plus a resolver that layers runtime URL selections on top of the baked
 //      default following a fixed precedence ladder.
 //
-// Metals are treated as COLORS, no karat. There are exactly six codes:
+// Metals are treated as COLORS, no karat. There are exactly six:
 //   Y Yellow Gold · R Rose Gold · W White Gold · G Gun Metal ·
 //   B Black Rhodium · T Tantalum
-// Platinum and Silver stay in the preset library but share White Gold's look,
-// so they have no code of their own — `W` covers every white metal. A
-// spelled-out "platinum" / "silver" token in a GLB name still resolves to its
-// own preset id (same appearance, honest label).
+// Platinum and Silver were removed from the palette — both read as "white", so
+// any legacy "platinum"/"silver" token in an existing GLB name resolves to
+// White Gold instead of breaking.
 //
 // DESIGN NOTE — regression safety: parseMaterialRole() returns null unless the
 // name chain shows a clear convention signal (a section token, a part token,
@@ -74,13 +73,13 @@ const METAL_ALIASES = [
   ['rg', 'word', 'rose-gold'],
   ['white', 'sub', 'white-gold'],
   ['wg', 'word', 'white-gold'],
-  // Other white metals — same look as white-gold, distinct preset ids
-  ['platinum', 'sub', 'platinum'],
-  ['plat', 'word', 'platinum'],
-  ['pt', 'word', 'platinum'],
-  ['sterling', 'sub', 'silver'],
-  ['silver', 'sub', 'silver'],
-  ['925', 'word', 'silver']
+  // legacy → white
+  ['platinum', 'sub', 'white-gold'],
+  ['plat', 'word', 'white-gold'],
+  ['pt', 'word', 'white-gold'],
+  ['sterling', 'sub', 'white-gold'],
+  ['silver', 'sub', 'white-gold'],
+  ['925', 'word', 'white-gold']
 ];
 
 // Section tokens → canonical param section + compact-code slot. Shank is the
