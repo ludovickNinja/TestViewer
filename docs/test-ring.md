@@ -174,10 +174,14 @@ Once named, any piece can be recoloured from the URL without re-exporting:
 - `?er=YW&mb=W` — per-piece codes (engagement two-tone, band solid white).
 - `?shank=R`, `?head=G`, `?details=B`, `?band=W` — per-section overrides.
 - `?stone=RB` / `?er-stone=EM` — swap the gem.
+- `?material=NAME:VALUE` (repeatable) — override one material by its raw GLB
+  material / mesh name, no convention needed. `VALUE` is a hex colour
+  (`%23d4af37`) or a preset id (`rose-gold`, `ruby`).
 
-Precedence (most specific wins): per-part-section param → per-section param →
+Precedence (most specific wins): `?material` → per-part-section param → per-section param →
 per-piece code → global `?metal` → the baked GLB name. A sidecar JSON entry,
-if present, still overrides everything field-by-field.
+if present, is merged with `?material` (URL wins per field) and together they
+override everything else.
 
 Each unique stone position can share a material (e.g. all halo stones use
 `Diamond_Halo`) **or** have its own (e.g. `Diamond_Center`,
