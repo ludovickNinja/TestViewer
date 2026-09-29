@@ -142,8 +142,9 @@ one-letter code:
 | `B` | Black Rhodium |
 | `T` | Tantalum |
 
-> Platinum and silver were removed — both read as "white", so any legacy
-> `Platinum` / `Silver` token resolves to White Gold.
+> Platinum and sterling silver are still offered but share the White Gold
+> look, so they have no code letter — use `W`. A spelled-out `Platinum` /
+> `Silver` token in a name still maps to its own preset (same appearance).
 
 - **Part**: `ER` / `Engagement` / `Ring`, or `MB` / `Band` / `Wedding`.
 - **Section**: `Shank`, `Head` (`Setting`/`Prong`/`Basket`/`Crown`),
