@@ -5,7 +5,7 @@
 //   1. The shared Three.js scene factory (src/three/createScene.js)
 //   2. The procedural geometry generator (wedding-bandGeometry.js)
 //   3. The shared material library (src/data/materialPresets.json) via
-//      builderMaterials.js — filtered to the three gold options.
+//      builderMaterials.js — see BAND_METALS below for which are offered.
 //   4. The parameter panel (wedding-bandUI.js)
 //   5. The config (src/data/wedding-bandConfig.json)
 //
@@ -30,7 +30,9 @@ import {
   ringSizeToInsideRadiusM
 } from './wedding-bandGeometry.js';
 import { createWeddingBandUI } from './wedding-bandUI.js';
-import { createMetalMaterial, listMetals } from '../builder/builderMaterials.js';
+import { createMetalMaterial } from '../builder/builderMaterials.js';
+import { findPreset } from '../three/applyPreset.js';
+import materialPresets from '../data/materialPresets.json';
 import { createInspector } from '../three/inspector.js';
 import {
   loadPricing,
@@ -43,11 +45,22 @@ import { bandVolumeM3, massGrams } from '../pricing/computeBandWeight.js';
 
 const DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
 
-// The band UI exposes the three gold colors plus platinum and sterling
-// silver. Karat (10K/14K/18K) is only meaningful for the golds — it doesn't
-// affect rendering, only pricing.
-const BAND_METAL_IDS = new Set(['yellow-gold', 'white-gold', 'rose-gold', 'platinum', 'silver']);
-const metals = listMetals({ filter: (id) => BAND_METAL_IDS.has(id) });
+// Metals offered on the band. `id` is the commercial choice the customer
+// makes (it drives the pricing key in pricingConfig.json); `preset` is the
+// render colour from the shared material library. The library holds colours
+// only, so platinum and sterling silver simply render as white gold — all
+// white metals share one look. Karat (10K/14K/18K) is only meaningful for
+// the golds — it doesn't affect rendering, only pricing. The newer colour
+// metals (gun metal, black rhodium, tantalum) are intentionally excluded
+// because pricingConfig.json has no spot/density entry for them yet.
+const BAND_METALS = [
+  { id: 'yellow-gold', name: 'Yellow Gold',     preset: 'yellow-gold' },
+  { id: 'white-gold',  name: 'White Gold',      preset: 'white-gold' },
+  { id: 'rose-gold',   name: 'Rose Gold',       preset: 'rose-gold' },
+  { id: 'platinum',    name: 'Platinum',        preset: 'white-gold' },
+  { id: 'silver',      name: 'Sterling Silver', preset: 'white-gold' }
+];
+const metals = BAND_METALS.map((m) => ({ ...findPreset(materialPresets, m.preset), ...m }));
 const karats = [
   { id: '10k', label: '10K' },
   { id: '14k', label: '14K' },

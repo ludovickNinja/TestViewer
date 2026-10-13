@@ -52,11 +52,14 @@ import { createARController } from './ar/arController.js';
 import { isTryOnSupported } from './ar/cameraStream.js';
 import {
   fetchMaterialOverrides,
+  readMaterialOverridesFromUrl,
+  readMaterialSelectionFromUrl,
   readModelIdFromUrl,
   readShowFromUrl,
   resolveModel,
   writeShowToUrl
 } from './services/modelService.js';
+import materialPresets from './data/materialPresets.json';
 
 const viewerParams = new URLSearchParams(window.location.search);
 const DEBUG = viewerParams.get('debug') === '1';
@@ -261,7 +264,19 @@ function mount() {
   // Fetch the optional material-overrides sidecar in parallel with the model
   // so we can apply it as soon as both arrive. 404 is fine — it just means no
   // overrides have been authored for this model yet.
-  const overridesPromise = fetchMaterialOverrides(resolved.materialOverridesUrl);
+  //
+  // URL-supplied overrides (?material=NAME:VALUE) shallow-merge on top of the
+  // sidecar so a link can recolor a piece without editing JSON. Per-material
+  // props merge key-by-key, and the URL wins on collision.
+  const urlOverrides = readMaterialOverridesFromUrl(window.location.search, materialPresets);
+  const overridesPromise = fetchMaterialOverrides(resolved.materialOverridesUrl).then((sidecar) => {
+    if (!urlOverrides) return sidecar;
+    const out = { ...(sidecar || {}) };
+    for (const [name, props] of Object.entries(urlOverrides)) {
+      out[name] = { ...(out[name] || {}), ...props };
+    }
+    return out;
+  });
 
   Promise.all([
     loadModel({
@@ -281,7 +296,11 @@ function mount() {
       // attenuationDistance) are scaled by the model's bounding radius so
       // they don't go saturated/uniform on millimetre-scale exports or
       // diluted on metre-scale ones.
-      const envsApplied = viewer.applyMaterialEnvironments(root, overrides, frame.radius);
+      // Runtime material selection from the URL (?metal=, ?er=, ?head=,
+      // ?stone= …). Layered on top of the GLB's baked names by the viewer's
+      // material-naming convention; the sidecar (if any) still wins per field.
+      const selection = readMaterialSelectionFromUrl();
+      const envsApplied = viewer.applyMaterialEnvironments(root, overrides, frame.radius, selection);
       fitCameraToObject(viewer.camera, viewer.controls, frame);
       thumbStrip?.setActive(DEFAULT_VIEW);
       thumbActions?.setEnabled(true);
